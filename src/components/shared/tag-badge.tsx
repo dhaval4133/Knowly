@@ -1,0 +1,17 @@
+import type { Tag } from '@/lib/types';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
+
+interface TagBadgeProps {
+  tag: Tag;
+}
+
+export default function TagBadge({ tag }: TagBadgeProps) {
+  return (
+    <Link href={`/tags/${tag.name.toLowerCase()}`} legacyBehavior>
+      <Badge variant="secondary" className="cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors">
+        {tag.name}
+      </Badge>
+    </Link>
+  );
+}
