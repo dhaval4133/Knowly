@@ -29,7 +29,14 @@ interface UserDBDocument extends WithId<Document> {
 interface QuestionDBDocument extends QuestionData {
   _id: ObjectId;
   authorId: ObjectId;
+  answers: AnswerDBDocument[];
 }
+
+interface AnswerDBDocument extends AnswerData {
+    _id: ObjectId | string;
+    authorId: ObjectId | string;
+}
+
 
 // Structure to hold a user's answer along with context of the question it belongs to
 interface UserAnswerEntry {
@@ -99,6 +106,7 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
     console.warn('Invalid authorIdString format for getQuestionsByAuthorId:', authorIdString);
     return [];
   }
+  const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
 
   try {
     const db = await connectToDatabase();
@@ -108,6 +116,7 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
 
     const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
     
+    // Fetch only the main author for the questions list, as QuestionCard doesn't show answer authors.
     const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
     if (!profileAuthorDoc) {
         console.warn(`Author ${authorIdString} not found for their own questions.`);
@@ -119,38 +128,15 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
       avatarUrl: profileAuthorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileAuthorDoc.name[0]?.toUpperCase() || 'U'}`,
     };
 
-    const answerAuthorIds = new Set<string>();
-    questionDocs.forEach(qDoc => {
-      (qDoc.answers || []).forEach(ans => {
-        if (ans.authorId && ObjectId.isValid(ans.authorId.toString())) {
-          answerAuthorIds.add(ans.authorId.toString());
-        }
-      });
-    });
-    
-    const answerAuthorsMap = new Map<string, UserType>();
-    if (answerAuthorIds.size > 0) {
-      const answerAuthorObjectIds = Array.from(answerAuthorIds).map(id => new ObjectId(id));
-      const answerAuthorDocs = await usersCollection.find({ _id: { $in: answerAuthorObjectIds } }).toArray();
-      answerAuthorDocs.forEach(doc => {
-        answerAuthorsMap.set(doc._id.toString(), {
-          id: doc._id.toString(),
-          name: doc.name,
-          avatarUrl: doc.avatarUrl || `https://placehold.co/100x100.png?text=${doc.name[0]?.toUpperCase() || 'U'}`,
-        });
-      });
-    }
-    const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
-
-
     const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
+      // For QuestionCard on profile, only answer count is needed.
+      // Populate answers with defaultAuthor to satisfy types.
       const populatedAnswers = (qDoc.answers || []).map(ans => {
-         const answerAuthor = answerAuthorsMap.get(ans.authorId.toString()) || defaultAuthor;
          const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
           id: ansId,
           content: ans.content,
-          author: answerAuthor,
+          author: defaultAuthor, // QuestionCard does not use this
           createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
@@ -166,7 +152,7 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
         title: qDoc.title,
         description: qDoc.description,
         tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
-        author: profileAuthor,
+        author: profileAuthor, // This is the author of the question itself
         createdAt: validCreatedAt,
         updatedAt: validUpdatedAt,
         upvotes: qDoc.upvotes,
@@ -211,13 +197,16 @@ async function getAnswersByAuthorId(profileUserIdString: string): Promise<UserAn
     };
     
     // Find questions where this user has posted an answer
+    // The authorId in answers can be a string or ObjectId, so we query for string.
     const questionDocs = await questionsCollection.find({ "answers.authorId": profileUserIdString }).sort({"answers.createdAt": -1}).toArray();
     
     const userAnswerEntries: UserAnswerEntry[] = [];
 
     for (const qDoc of questionDocs) {
       for (const ans of (qDoc.answers || [])) {
-        if (ans.authorId === profileUserIdString) {
+        // Ensure comparison is string-to-string or handle ObjectId if ans.authorId is ObjectId
+        const answerAuthorIdStr = ans.authorId.toString();
+        if (answerAuthorIdStr === profileUserIdString) {
           const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
           const populatedAnswer: PopulatedAnswer = {
             id: ansId,
@@ -353,6 +342,3 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     </div>
   );
 }
-
-
-    

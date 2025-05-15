@@ -16,8 +16,8 @@ interface QuestionDBDocument extends QuestionData { // Inherits fields from Ques
 }
 
 interface AnswerDBDocument extends AnswerData { // Inherits fields from AnswerData
-    _id: ObjectId; // Ensure _id is ObjectId for direct DB type
-    authorId: ObjectId | string; // Can be ObjectId or string from older data
+    _id: ObjectId | string; // Can be ObjectId or string from older data or newly pushed answers
+    authorId: ObjectId | string; // Can be ObjectId or string
 }
 
 
@@ -69,19 +69,16 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
     // Sort by updatedAt descending for most recent activity
     const questionDocs = await questionsCollection.find().sort({ updatedAt: -1 }).toArray();
     
-    const authorIds = new Set<ObjectId>();
+    // For homepage QuestionCards, we only need to populate the question's author.
+    // Answer authors are not displayed by QuestionCard.
+    const questionAuthorIds = new Set<ObjectId>();
     questionDocs.forEach(qDoc => {
-      authorIds.add(qDoc.authorId);
-      (qDoc.answers || []).forEach(ans => {
-        if (ans.authorId && ObjectId.isValid(ans.authorId.toString())) {
-          authorIds.add(new ObjectId(ans.authorId.toString()));
-        }
-      });
+      questionAuthorIds.add(qDoc.authorId);
     });
     
-    const uniqueAuthorIdsArray = Array.from(authorIds);
+    const uniqueQuestionAuthorIdsArray = Array.from(questionAuthorIds);
 
-    const authorsArray = await usersCollection.find({ _id: { $in: uniqueAuthorIdsArray } }).toArray();
+    const authorsArray = await usersCollection.find({ _id: { $in: uniqueQuestionAuthorIdsArray } }).toArray();
     const authorsMap = new Map<string, UserType>();
     authorsArray.forEach(authorDoc => {
       authorsMap.set(authorDoc._id.toString(), {
@@ -96,13 +93,13 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
     const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
       const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
       
+      // For QuestionCard, we only need answer count. Populate with defaultAuthor to satisfy types.
       const populatedAnswers = (qDoc.answers || []).map(ans => {
-        const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
         const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
           id: ansId,
           content: ans.content,
-          author: answerAuthor,
+          author: defaultAuthor, // Use defaultAuthor as QuestionCard doesn't display this
           createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
@@ -122,7 +119,7 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
         updatedAt: validUpdatedAt,
         upvotes: qDoc.upvotes,
         downvotes: qDoc.downvotes,
-        views: qDoc.views, // Include views
+        views: qDoc.views,
         answers: populatedAnswers,
       };
     });
