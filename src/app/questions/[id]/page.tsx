@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow } from 'date-fns';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
+import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
 
 interface QuestionPageProps {
   params: { id: string };
@@ -42,6 +43,7 @@ async function connectToDatabase() {
       await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
       return cachedDb;
     } catch (e) {
+      console.warn('Cached MongoDB connection lost for question detail page, attempting to reconnect...', e);
       cachedClient = null;
       cachedDb = null;
     }
@@ -49,8 +51,15 @@ async function connectToDatabase() {
    if (!MONGODB_URI || !MONGODB_DB_NAME) {
     throw new Error('MongoDB URI or DB Name not configured for question detail page.');
   }
-  cachedClient = new MongoClient(MONGODB_URI);
-  await cachedClient.connect();
+  if (!cachedClient) {
+    cachedClient = new MongoClient(MONGODB_URI);
+    try {
+      await cachedClient.connect();
+    } catch (err) {
+      cachedClient = null;
+      throw err;
+    }
+  }
   cachedDb = cachedClient.db(MONGODB_DB_NAME);
   return cachedDb;
 }
@@ -66,11 +75,6 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
     const usersCollection = db.collection<UserDBDocument>('users');
     const questionObjectId = new ObjectId(id);
-
-    // Increment views atomically and get the updated document
-    // Using findOneAndUpdate to get the document *after* the increment
-    // However, for simplicity and to avoid needing the new doc immediately for this specific increment,
-    // we can fetch first, then increment. The displayed view count can be handled.
     
     const questionDoc = await questionsCollection.findOne({ _id: questionObjectId });
 
@@ -78,13 +82,11 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       return null;
     }
 
-    // Increment views - fire and forget or await if critical.
-    // For a slightly more "actual" view on this load, we'll adjust the view count before returning.
     await questionsCollection.updateOne(
       { _id: questionObjectId },
       { $inc: { views: 1 } }
     );
-    const currentViews = questionDoc.views + 1; // Reflects the current view
+    const currentViews = questionDoc.views + 1; 
 
     const authorIdsToFetch = new Set<ObjectId>();
     authorIdsToFetch.add(questionDoc.authorId);
@@ -111,8 +113,9 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
 
     const populatedAnswers: PopulatedAnswer[] = (questionDoc.answers || []).map(ans => {
       const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
+      const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
       return {
-        id: ans._id.toString(), 
+        id: ansId, 
         content: ans.content,
         author: answerAuthor,
         createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
@@ -134,7 +137,7 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       updatedAt: validUpdatedAt,
       upvotes: questionDoc.upvotes,
       downvotes: questionDoc.downvotes,
-      views: currentViews, // Use the incremented view count
+      views: currentViews, 
       answers: populatedAnswers,
     };
   } catch (error) {
@@ -163,12 +166,13 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
   const questionAuthorInitials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
   const questionTimeAgo = formatDistanceToNow(new Date(question.createdAt), { addSuffix: true });
-  const askedOrModifiedText = question.createdAt === question.updatedAt 
+  const askedOrModifiedText = new Date(question.createdAt).getTime() === new Date(question.updatedAt).getTime()
     ? `Asked ${questionTimeAgo}` 
     : `Modified ${formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true })}`;
 
   return (
     <div className="space-y-8">
+      <RealtimeUpdateTrigger intervalMs={15000} />
       <Card className="shadow-lg">
         <CardHeader>
           <div className="flex justify-between items-start">

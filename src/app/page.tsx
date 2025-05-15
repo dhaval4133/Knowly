@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Search, AlertTriangle } from 'lucide-react';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
+import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
 
 // Define a more specific type for Question documents from MongoDB
 interface QuestionDBDocument extends QuestionData { // Inherits fields from QuestionData
@@ -16,7 +17,7 @@ interface QuestionDBDocument extends QuestionData { // Inherits fields from Ques
 
 interface AnswerDBDocument extends AnswerData { // Inherits fields from AnswerData
     _id: ObjectId; // Ensure _id is ObjectId for direct DB type
-    authorId: ObjectId;
+    authorId: ObjectId | string; // Can be ObjectId or string from older data
 }
 
 
@@ -38,6 +39,7 @@ async function connectToDatabase() {
       await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
       return cachedDb;
     } catch (e) {
+      console.warn('Cached MongoDB connection lost for homepage, attempting to reconnect...', e);
       cachedClient = null;
       cachedDb = null;
     }
@@ -45,8 +47,15 @@ async function connectToDatabase() {
   if (!MONGODB_URI || !MONGODB_DB_NAME) {
     throw new Error('MongoDB URI or DB Name not configured for homepage.');
   }
-  cachedClient = new MongoClient(MONGODB_URI);
-  await cachedClient.connect();
+  if (!cachedClient) {
+    cachedClient = new MongoClient(MONGODB_URI);
+    try {
+      await cachedClient.connect();
+    } catch (err) {
+      cachedClient = null;
+      throw err;
+    }
+  }
   cachedDb = cachedClient.db(MONGODB_DB_NAME);
   return cachedDb;
 }
@@ -65,7 +74,6 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
       authorIds.add(qDoc.authorId);
       (qDoc.answers || []).forEach(ans => {
         if (ans.authorId && ObjectId.isValid(ans.authorId.toString())) {
-           // Ensure ans.authorId is treated as ObjectId if it's stored as string ObjectId
           authorIds.add(new ObjectId(ans.authorId.toString()));
         }
       });
@@ -89,13 +97,13 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
       const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
       
       const populatedAnswers = (qDoc.answers || []).map(ans => {
-        // ans.authorId is string here from AnswerData, convert to string for map lookup
         const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
+        const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
-          id: ans._id.toString(), // ans._id is string
+          id: ansId,
           content: ans.content,
           author: answerAuthor,
-          createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(), // ans.createdAt is Date
+          createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
@@ -132,6 +140,7 @@ export default async function Home() {
 
   return (
     <div className="space-y-8">
+      <RealtimeUpdateTrigger intervalMs={15000} />
       <div className="text-center">
         <h1 className="text-4xl font-bold text-primary mb-2">Welcome to Knowly</h1>
         <p className="text-lg text-muted-foreground">
