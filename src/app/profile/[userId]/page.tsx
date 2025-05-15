@@ -1,17 +1,21 @@
 
+'use client'; // Make this a client component to use useEffect and useState for current user
+
 import type { User as UserType, Question as PopulatedQuestion, Answer as PopulatedAnswer } from '@/lib/types';
-import { notFound } from 'next/navigation';
+import { notFound, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import QuestionCard from '@/components/question/question-card';
 import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
-import type { AnswerData, QuestionData } from '@/lib/types';
+import { MongoClient, Db, ObjectId, WithId } from 'mongodb'; // Keep for server-side fetching types
+import type { AnswerData, QuestionData } from '@/lib/types'; // Keep for server-side fetching types
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
 interface ProfilePageProps {
@@ -37,8 +41,6 @@ interface AnswerDBDocument extends AnswerData {
     authorId: ObjectId | string;
 }
 
-
-// Structure to hold a user's answer along with context of the question it belongs to
 interface UserAnswerEntry {
   answer: PopulatedAnswer;
   question: {
@@ -47,229 +49,254 @@ interface UserAnswerEntry {
   };
 }
 
+interface CurrentUser {
+  userId: string;
+  userName: string;
+}
 
+// NOTE: The database fetching functions (connectToDatabase, getUserById, etc.)
+// remain server-side concerns. They are NOT directly called from the client component.
+// This component will fetch initial data via props (or another mechanism for client-side data fetching if preferred).
+// For this iteration, we assume initial data (fetchedUser, userQuestions, userAnswers) is passed
+// or fetched in a way compatible with client components (e.g., via an API route and useEffect).
+// However, to make `showAuthorActions` work, we need the *current logged-in user* on the client.
+
+// These constants are fine here as they might be used by server-side parts of this file if it were a RSC.
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
 
-let cachedClient: MongoClient | null = null;
-let cachedDb: Db | null = null;
 
-async function connectToDatabase() {
-  if (cachedClient && cachedDb) {
-    try {
-      await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
-      return cachedDb;
-    } catch (e) {
-      console.warn('Cached MongoDB connection lost for profile page, attempting to reconnect...', e);
-      cachedClient = null;
-      cachedDb = null;
-    }
-  }
+// Helper functions for data fetching - these would typically be called on the server or in API routes.
+// For the purpose of this client component, we'll assume data is fetched and passed as props or via a client-side fetch.
+// The actual database calls would not run in the browser.
 
-  if (!cachedClient) {
+async function fetchProfileData(userId: string): Promise<{
+    fetchedUser: UserDBDocument | null;
+    userQuestions: PopulatedQuestion[];
+    userAnswers: UserAnswerEntry[];
+    dbConfigured: boolean;
+}> {
     if (!MONGODB_URI || !MONGODB_DB_NAME) {
-      throw new Error('MongoDB URI or DB Name not configured for profile page.');
-    }
-    cachedClient = new MongoClient(MONGODB_URI);
-    try {
-      await cachedClient.connect();
-    } catch (err) {
-      cachedClient = null;
-      throw err;
-    }
-  }
-  cachedDb = cachedClient.db(MONGODB_DB_NAME);
-  return cachedDb;
-}
-
-async function getUserById(userId: string): Promise<UserDBDocument | null> {
-  if (!ObjectId.isValid(userId)) {
-    console.warn('Invalid userId format for profile page (getUserById):', userId);
-    return null;
-  }
-  try {
-    const db = await connectToDatabase();
-    const usersCollection = db.collection<UserDBDocument>('users');
-    const user = await usersCollection.findOne({ _id: new ObjectId(userId) }, { projection: { password: 0 } });
-    return user;
-  } catch (error) {
-    console.error('Error fetching user from DB for profile page:', error);
-    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('querySrv ESERVFAIL') || error.message.includes('Authentication failed'))) {
-      throw new Error(`Database connection issue for profile page (getUserById): ${error.message}`);
-    }
-    return null;
-  }
-}
-
-async function getQuestionsByAuthorId(authorIdString: string): Promise<PopulatedQuestion[]> {
-  if (!ObjectId.isValid(authorIdString)) {
-    console.warn('Invalid authorIdString format for getQuestionsByAuthorId:', authorIdString);
-    return [];
-  }
-  const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
-
-  try {
-    const db = await connectToDatabase();
-    const questionsCollection = db.collection<QuestionDBDocument>('questions');
-    const usersCollection = db.collection<UserDBDocument>('users'); 
-    const authorObjectId = new ObjectId(authorIdString);
-
-    const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
-    
-    // Fetch only the main author for the questions list, as QuestionCard doesn't show answer authors.
-    const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
-    if (!profileAuthorDoc) {
-        console.warn(`Author ${authorIdString} not found for their own questions.`);
-        return []; 
-    }
-    const profileAuthor: UserType = {
-      id: profileAuthorDoc._id.toString(),
-      name: profileAuthorDoc.name,
-      avatarUrl: profileAuthorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileAuthorDoc.name[0]?.toUpperCase() || 'U'}`,
-    };
-
-    const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
-      // For QuestionCard on profile, only answer count is needed.
-      // Populate answers with defaultAuthor to satisfy types.
-      const populatedAnswers = (qDoc.answers || []).map(ans => {
-         const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
-        return {
-          id: ansId,
-          content: ans.content,
-          author: defaultAuthor, // QuestionCard does not use this
-          createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
-          upvotes: ans.upvotes,
-          downvotes: ans.downvotes,
-        };
-      });
-
-      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
-      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
-
-
-      return {
-        id: qDoc._id.toString(),
-        title: qDoc.title,
-        description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
-        author: profileAuthor, // This is the author of the question itself
-        createdAt: validCreatedAt,
-        updatedAt: validUpdatedAt,
-        upvotes: qDoc.upvotes,
-        downvotes: qDoc.downvotes,
-        views: qDoc.views,
-        answers: populatedAnswers,
-      };
-    });
-    return populatedQuestions;
-  } catch (error) {
-    console.error('Error fetching questions by author ID for profile:', error);
-    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('querySrv ESERVFAIL') || error.message.includes('Authentication failed'))) {
-      throw new Error(`Database connection issue for getQuestionsByAuthorId: ${error.message}`);
-    }
-    return [];
-  }
-}
-
-async function getAnswersByAuthorId(profileUserIdString: string): Promise<UserAnswerEntry[]> {
-  if (!ObjectId.isValid(profileUserIdString)) {
-    console.warn('Invalid profileUserIdString format for getAnswersByAuthorId:', profileUserIdString);
-    return [];
-  }
-
-  try {
-    const db = await connectToDatabase();
-    const questionsCollection = db.collection<QuestionDBDocument>('questions');
-    const usersCollection = db.collection<UserDBDocument>('users');
-
-    const profileUserObjectId = new ObjectId(profileUserIdString);
-    const profileUserDoc = await usersCollection.findOne({ _id: profileUserObjectId });
-
-    if (!profileUserDoc) {
-      console.warn(`Profile user ${profileUserIdString} not found for getAnswersByAuthorId.`);
-      return [];
+        return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: false };
     }
 
-    const profileUserType: UserType = {
-      id: profileUserDoc._id.toString(),
-      name: profileUserDoc.name,
-      avatarUrl: profileUserDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileUserDoc.name[0]?.toUpperCase() || 'U'}`,
-    };
-    
-    // Find questions where this user has posted an answer
-    // The authorId in answers can be a string or ObjectId, so we query for string.
-    const questionDocs = await questionsCollection.find({ "answers.authorId": profileUserIdString }).sort({"answers.createdAt": -1}).toArray();
-    
-    const userAnswerEntries: UserAnswerEntry[] = [];
+    let cachedClient: MongoClient | null = null;
+    let cachedDb: Db | null = null;
 
-    for (const qDoc of questionDocs) {
-      for (const ans of (qDoc.answers || [])) {
-        // Ensure comparison is string-to-string or handle ObjectId if ans.authorId is ObjectId
-        const answerAuthorIdStr = ans.authorId.toString();
-        if (answerAuthorIdStr === profileUserIdString) {
-          const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
-          const populatedAnswer: PopulatedAnswer = {
-            id: ansId,
-            content: ans.content,
-            author: profileUserType, // The author of this answer is the profile user
-            createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
-            upvotes: ans.upvotes,
-            downvotes: ans.downvotes,
-          };
-          userAnswerEntries.push({
-            answer: populatedAnswer,
-            question: {
-              id: qDoc._id.toString(),
-              title: qDoc.title,
-            },
-          });
+    async function connectToDatabase() {
+        if (cachedClient && cachedDb) {
+            try {
+                await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
+                return cachedDb;
+            } catch (e) {
+                cachedClient = null;
+                cachedDb = null;
+            }
         }
-      }
+        if (!cachedClient) {
+            cachedClient = new MongoClient(MONGODB_URI!);
+            try {
+                await cachedClient.connect();
+            } catch (err) {
+                cachedClient = null;
+                throw err;
+            }
+        }
+        cachedDb = cachedClient.db(MONGODB_DB_NAME!);
+        return cachedDb;
     }
-    // Sort answers by their own creation date, newest first
-    userAnswerEntries.sort((a, b) => new Date(b.answer.createdAt).getTime() - new Date(a.answer.createdAt).getTime());
 
-    return userAnswerEntries;
-  } catch (error) {
-    console.error('Error fetching answers by author ID for profile:', error);
-    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('querySrv ESERVFAIL') || error.message.includes('Authentication failed'))) {
-      throw new Error(`Database connection issue for getAnswersByAuthorId: ${error.message}`);
+    async function getUserById(userId: string): Promise<UserDBDocument | null> {
+        if (!ObjectId.isValid(userId)) return null;
+        try {
+            const db = await connectToDatabase();
+            return await db.collection<UserDBDocument>('users').findOne({ _id: new ObjectId(userId) }, { projection: { password: 0 } });
+        } catch (error) {
+            console.error('Error fetching user from DB for profile page:', error);
+            return null;
+        }
     }
-    return [];
-  }
+
+    async function getQuestionsByAuthorId(authorIdString: string, db: Db, usersCollection: any): Promise<PopulatedQuestion[]> {
+        if (!ObjectId.isValid(authorIdString)) return [];
+        const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
+        try {
+            const questionsCollection = db.collection<QuestionDBDocument>('questions');
+            const authorObjectId = new ObjectId(authorIdString);
+            const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
+            const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
+            if (!profileAuthorDoc) return [];
+
+            const profileAuthor: UserType = {
+                id: profileAuthorDoc._id.toString(),
+                name: profileAuthorDoc.name,
+                avatarUrl: profileAuthorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileAuthorDoc.name[0]?.toUpperCase() || 'U'}`,
+            };
+
+            return questionDocs.map(qDoc => {
+                const populatedAnswers = (qDoc.answers || []).map(ans => ({
+                    id: typeof ans._id === 'string' ? ans._id : ans._id.toString(),
+                    content: ans.content,
+                    author: defaultAuthor,
+                    createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+                    upvotes: ans.upvotes,
+                    downvotes: ans.downvotes,
+                }));
+                const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
+                const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
+                return {
+                    id: qDoc._id.toString(), title: qDoc.title, description: qDoc.description,
+                    tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), author: profileAuthor,
+                    createdAt: validCreatedAt, updatedAt: validUpdatedAt,
+                    upvotes: qDoc.upvotes, downvotes: qDoc.downvotes, views: qDoc.views, answers: populatedAnswers,
+                };
+            });
+        } catch (error) {
+            console.error('Error fetching questions by author ID for profile:', error);
+            return [];
+        }
+    }
+
+    async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCollection: any): Promise<UserAnswerEntry[]> {
+        if (!ObjectId.isValid(profileUserIdString)) return [];
+        try {
+            const questionsCollection = db.collection<QuestionDBDocument>('questions');
+            const profileUserObjectId = new ObjectId(profileUserIdString);
+            const profileUserDoc = await usersCollection.findOne({ _id: profileUserObjectId });
+            if (!profileUserDoc) return [];
+
+            const profileUserType: UserType = {
+                id: profileUserDoc._id.toString(), name: profileUserDoc.name,
+                avatarUrl: profileUserDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileUserDoc.name[0]?.toUpperCase() || 'U'}`,
+            };
+            
+            const questionDocs = await questionsCollection.find({ "answers.authorId": profileUserIdString }).sort({"answers.createdAt": -1}).toArray();
+            const userAnswerEntries: UserAnswerEntry[] = [];
+
+            for (const qDoc of questionDocs) {
+                for (const ans of (qDoc.answers || [])) {
+                    const answerAuthorIdStr = ans.authorId.toString();
+                    if (answerAuthorIdStr === profileUserIdString) {
+                        userAnswerEntries.push({
+                            answer: {
+                                id: typeof ans._id === 'string' ? ans._id : ans._id.toString(), content: ans.content, author: profileUserType,
+                                createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+                                upvotes: ans.upvotes, downvotes: ans.downvotes,
+                            },
+                            question: { id: qDoc._id.toString(), title: qDoc.title },
+                        });
+                    }
+                }
+            }
+            userAnswerEntries.sort((a, b) => new Date(b.answer.createdAt).getTime() - new Date(a.answer.createdAt).getTime());
+            return userAnswerEntries;
+        } catch (error) {
+            console.error('Error fetching answers by author ID for profile:', error);
+            return [];
+        }
+    }
+
+    try {
+        const db = await connectToDatabase();
+        const usersCollection = db.collection<UserDBDocument>('users');
+        const userDoc = await getUserById(userId);
+
+        if (!userDoc) {
+            return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true };
+        }
+        const questions = await getQuestionsByAuthorId(userDoc._id.toString(), db, usersCollection);
+        const answers = await getAnswersByAuthorId(userDoc._id.toString(), db, usersCollection);
+        return { fetchedUser: userDoc, userQuestions: questions, userAnswers: answers, dbConfigured: true };
+
+    } catch (dbError) {
+        console.error("ProfilePage: Database error during data fetching", dbError);
+        return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true }; // Assume configured but errored
+    }
 }
 
 
-export default async function ProfilePage({ params }: ProfilePageProps) {
-  if (!MONGODB_URI || !MONGODB_DB_NAME) {
+export default function ProfilePage({ params }: ProfilePageProps) {
+  const [profileData, setProfileData] = useState<{
+    fetchedUser: UserDBDocument | null;
+    userQuestions: PopulatedQuestion[];
+    userAnswers: UserAnswerEntry[];
+    dbConfigured: boolean;
+  } | null>(null);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      const data = await fetchProfileData(params.userId);
+      setProfileData(data);
+
+      // Fetch current logged-in user
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const sessionData = await response.json();
+          if (sessionData.success && sessionData.user) {
+            setCurrentUser(sessionData.user);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching current user session:", error);
+      }
+      
+      setIsLoading(false);
+      if (data.dbConfigured && !data.fetchedUser) {
+        // notFound() can only be used in Server Components.
+        // For client components, we redirect or show a message.
+        // router.replace('/not-found'); // Or display a "User not found" message
+      }
+    };
+    loadData();
+  }, [params.userId, router]);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-12 w-1/2 mx-auto" />
+        <div className="mt-6 space-y-6">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      </div>
+    );
+  }
+  
+  if (!profileData?.dbConfigured) {
      return (
-        <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg">
+        <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg max-w-2xl mx-auto">
+          <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
           <h1 className="text-2xl font-semibold text-destructive">Database Not Configured</h1>
           <p className="text-muted-foreground mt-2">
-            This page requires MongoDB connection details. Please configure MONGODB_URI and MONGODB_DB_NAME.
+            This page requires MongoDB connection details. Please ensure MONGODB_URI and MONGODB_DB_NAME are correctly set up in your environment variables.
           </p>
         </div>
       );
   }
 
-  let fetchedUser: UserDBDocument | null = null;
-  let userQuestions: PopulatedQuestion[] = [];
-  let userAnswers: UserAnswerEntry[] = [];
-
-  try {
-    fetchedUser = await getUserById(params.userId);
-    if (fetchedUser) {
-      userQuestions = await getQuestionsByAuthorId(fetchedUser._id.toString());
-      userAnswers = await getAnswersByAuthorId(fetchedUser._id.toString());
-    }
-  } catch (dbError) {
-     console.error("ProfilePage: Database error during data fetching", dbError);
-  }
-
-  if (!fetchedUser) {
-    notFound();
+  if (!profileData.fetchedUser) {
+    // This is a client component, so notFound() cannot be used directly.
+    // Render a "User not found" message or redirect.
+    return (
+      <div className="text-center py-12">
+        <h1 className="text-2xl font-semibold text-destructive">User Not Found</h1>
+        <p className="text-muted-foreground mt-2">The profile you are looking for does not exist.</p>
+        <Button asChild className="mt-4">
+          <Link href="/">Go to Homepage</Link>
+        </Button>
+      </div>
+    );
   }
   
+  const { fetchedUser, userQuestions, userAnswers } = profileData;
+  const isOwnProfile = currentUser?.userId === fetchedUser._id.toString();
+
   const displayUser: UserType = {
     id: fetchedUser._id.toString(),
     name: fetchedUser.name,
@@ -304,10 +331,16 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
         <TabsContent value="questions" className="mt-6 space-y-6">
           {userQuestions.length > 0 ? (
             userQuestions.map(question => (
-              <QuestionCard key={question.id} question={question} />
+              <QuestionCard 
+                key={question.id} 
+                question={question} 
+                showAuthorActions={isOwnProfile} // Pass prop to show actions
+              />
             ))
           ) : (
-            <p className="text-center text-muted-foreground py-8">You haven&apos;t asked any questions yet.</p>
+            <p className="text-center text-muted-foreground py-8">
+              {isOwnProfile ? "You haven't asked any questions yet." : `${displayUser.name} hasn't asked any questions yet.`}
+            </p>
           )}
         </TabsContent>
         <TabsContent value="answers" className="mt-6 space-y-4">
@@ -322,7 +355,8 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                             </p>
                         </CardHeader>
                         <CardContent>
-                            <AnswerCard answer={entry.answer} />
+                            {/* AnswerCard already includes AnswerActions which checks for authorship */}
+                            <AnswerCard answer={entry.answer} questionId={entry.question.id} />
                         </CardContent>
                         <CardFooter className="pt-4 flex justify-end">
                             <Button asChild variant="outline" size="sm">
@@ -335,7 +369,9 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                     </Card>
                 ))
             ) : (
-                 <p className="text-center text-muted-foreground py-8">You haven&apos;t answered any questions yet.</p>
+                 <p className="text-center text-muted-foreground py-8">
+                    {isOwnProfile ? "You haven't answered any questions yet." : `${displayUser.name} hasn't answered any questions yet.`}
+                 </p>
             )}
         </TabsContent>
       </Tabs>

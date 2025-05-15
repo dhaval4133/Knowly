@@ -8,27 +8,34 @@ import VoteButtons from '@/components/shared/vote-buttons';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Eye, ArrowRight, Reply } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import QuestionActions from '@/components/question/question-actions'; // Import QuestionActions
 
 interface QuestionCardProps {
   question: Question;
+  showAuthorActions?: boolean; // New prop
 }
 
-export default function QuestionCard({ question }: QuestionCardProps) {
+export default function QuestionCard({ question, showAuthorActions = false }: QuestionCardProps) {
   const initials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
   const timeAgo = formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true });
-  const activityText = question.createdAt === question.updatedAt 
-    ? `asked ${formatDistanceToNow(new Date(question.createdAt), { addSuffix: true })}` 
+  const activityText = new Date(question.createdAt).getTime() === new Date(question.updatedAt).getTime()
+    ? `asked ${formatDistanceToNow(new Date(question.createdAt), { addSuffix: true })}`
     : `modified ${timeAgo}`;
 
 
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
       <CardHeader>
-        <div className="flex justify-between items-start">
-          <Link href={`/questions/${question.id}`} className="hover:text-primary transition-colors">
-            <CardTitle className="text-xl md:text-2xl font-semibold mb-1">{question.title}</CardTitle>
+        <div className="flex justify-between items-start space-x-2">
+          <Link href={`/questions/${question.id}`} className="hover:text-primary transition-colors flex-1 min-w-0">
+            <CardTitle className="text-xl md:text-2xl font-semibold mb-1 truncate" title={question.title}>{question.title}</CardTitle>
           </Link>
-          <VoteButtons initialUpvotes={question.upvotes} initialDownvotes={question.downvotes} itemId={question.id} itemType="question" />
+          <div className="flex items-center space-x-2 flex-shrink-0">
+            {showAuthorActions && (
+              <QuestionActions questionAuthorId={question.author.id} questionId={question.id} />
+            )}
+            <VoteButtons initialUpvotes={question.upvotes} initialDownvotes={question.downvotes} itemId={question.id} itemType="question" />
+          </div>
         </div>
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <Avatar className="h-6 w-6">
