@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, type FormEvent } from 'react';
@@ -7,33 +8,53 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+// import { useRouter } from 'next/navigation'; // Uncomment if you want to redirect
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  // const router = useRouter(); // Uncomment if you want to redirect
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-
-    if (email === 'test@example.com' && password === 'password') {
-      toast({
-        title: 'Login Successful',
-        description: 'Welcome back! (Mock login)',
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-      // Redirect to home or dashboard, e.g., router.push('/');
-    } else {
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: 'Login Successful',
+          description: data.message || 'Welcome back!',
+        });
+        // Optionally, redirect the user
+        // router.push('/'); 
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: data.message || 'Invalid email or password.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Login error:', error);
       toast({
-        title: 'Login Failed',
-        description: 'Invalid email or password. (Mock login)',
+        title: 'Login Error',
+        description: 'An unexpected error occurred. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 

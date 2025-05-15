@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, type FormEvent } from 'react';
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+// import { useRouter } from 'next/navigation'; // Uncomment if you want to redirect
 
 export default function RegisterForm() {
   const [name, setName] = useState('');
@@ -15,6 +17,7 @@ export default function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  // const router = useRouter(); // Uncomment if you want to redirect
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -28,15 +31,41 @@ export default function RegisterForm() {
     }
     setIsLoading(true);
 
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password }),
+      });
 
-    toast({
-      title: 'Registration Successful',
-      description: 'Your account has been created! (Mock registration)',
-    });
-    // Redirect to login or home, e.g., router.push('/login');
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: 'Registration Successful',
+          description: data.message || 'Your account has been created!',
+        });
+        // Optionally, redirect to login or home
+        // router.push('/login');
+      } else {
+        toast({
+          title: 'Registration Failed',
+          description: data.message || 'Could not create your account.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast({
+        title: 'Registration Error',
+        description: 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
