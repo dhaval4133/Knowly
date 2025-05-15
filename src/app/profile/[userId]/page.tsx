@@ -39,8 +39,17 @@ export interface UserAnswerEntry {
   };
 }
 
+// Plain user object for client component props
+export interface PlainProfileUser {
+  _id: string;
+  name: string;
+  email?: string;
+  createdAt: string; // ISO string
+  avatarUrl?: string;
+}
+
 export interface ProfileData {
-  fetchedUser: UserDBDocument | null;
+  fetchedUser: PlainProfileUser | null; // Use PlainProfileUser
   userQuestions: PopulatedQuestion[];
   userAnswers: UserAnswerEntry[];
   dbConfigured: boolean;
@@ -99,13 +108,14 @@ async function getQuestionsByAuthorId(authorIdString: string, db: Db, usersColle
         const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
         
         const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
-        if (!profileAuthorDoc) return [];
-
-        const profileAuthor: UserType = {
+        // If profileAuthorDoc is null (e.g. user deleted but questions remain), we might want a fallback or handle it.
+        // For now, if the author doesn't exist, we use a defaultAuthor.
+        const profileAuthor: UserType = profileAuthorDoc ? {
             id: profileAuthorDoc._id.toString(),
             name: profileAuthorDoc.name,
             avatarUrl: profileAuthorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileAuthorDoc.name[0]?.toUpperCase() || 'U'}`,
-        };
+        } : { ...defaultAuthor, id: authorIdString };
+
 
         return questionDocs.map(qDoc => {
             const populatedAnswers = (qDoc.answers || []).map(ans => {
@@ -188,12 +198,30 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
         if (!userDoc) {
             return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true, profileUserId: userId };
         }
+
+        // Convert UserDBDocument to PlainProfileUser for serialization
+        const plainFetchedUser: PlainProfileUser = {
+            _id: userDoc._id.toString(),
+            name: userDoc.name,
+            email: userDoc.email,
+            createdAt: userDoc.createdAt ? new Date(userDoc.createdAt).toISOString() : new Date(0).toISOString(),
+            avatarUrl: userDoc.avatarUrl,
+        };
+
         const questions = await getQuestionsByAuthorId(userDoc._id.toString(), db, usersCollection);
         const answers = await getAnswersByAuthorId(userDoc._id.toString(), db, usersCollection);
-        return { fetchedUser: userDoc, userQuestions: questions, userAnswers: answers, dbConfigured: true, profileUserId: userId };
+        
+        return { 
+            fetchedUser: plainFetchedUser, 
+            userQuestions: questions, 
+            userAnswers: answers, 
+            dbConfigured: true, 
+            profileUserId: userId 
+        };
 
     } catch (dbError) {
         console.error("ProfilePage: Database error during data fetching", dbError);
+        // Ensure a valid ProfileData structure is returned even on error
         return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true, profileUserId: userId }; 
     }
 }
@@ -220,3 +248,4 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   
   return <ProfileClientLayout profileData={profileData} />;
 }
+
