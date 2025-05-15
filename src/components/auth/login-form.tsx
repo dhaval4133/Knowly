@@ -3,19 +3,19 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-// import { useRouter } from 'next/navigation'; // Uncomment if you want to redirect
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  // const router = useRouter(); // Uncomment if you want to redirect
+  const router = useRouter();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -32,19 +32,21 @@ export default function LoginForm() {
 
       const data = await response.json();
 
-      if (response.ok && data.success) {
+      if (response.ok && data.success && data.userId && data.userName) {
         toast({
           title: 'Login Successful',
-          description: data.message || 'Welcome back!',
+          description: data.message || `Welcome back, ${data.userName}!`,
         });
-        // Optionally, redirect the user
-        // router.push('/'); 
+        localStorage.setItem('knowlyUser', JSON.stringify({ userId: data.userId, userName: data.userName }));
+        router.push(`/profile/${data.userId}`);
+        router.refresh(); // Helps ensure layout/header updates
       } else {
         toast({
           title: 'Login Failed',
           description: data.message || 'Invalid email or password.',
           variant: 'destructive',
         });
+        localStorage.removeItem('knowlyUser');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -53,6 +55,7 @@ export default function LoginForm() {
         description: 'An unexpected error occurred. Please try again.',
         variant: 'destructive',
       });
+      localStorage.removeItem('knowlyUser');
     } finally {
       setIsLoading(false);
     }
