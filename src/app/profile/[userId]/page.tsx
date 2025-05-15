@@ -1,12 +1,15 @@
 
-import type { User as UserType, Question as PopulatedQuestion } from '@/lib/types';
+import type { User as UserType, Question as PopulatedQuestion, Answer as PopulatedAnswer } from '@/lib/types';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import QuestionCard from '@/components/question/question-card';
+import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
+import { formatDistanceToNow } from 'date-fns';
 
 
 interface ProfilePageProps {
@@ -21,11 +24,18 @@ interface UserDBDocument extends WithId<Document> {
   avatarUrl?: string;
 }
 
-// Specific type for Question documents from MongoDB, extending QuestionData
 interface QuestionDBDocument extends QuestionData {
   _id: ObjectId;
   authorId: ObjectId;
-   // answers is already in QuestionData as AnswerData[]
+}
+
+// Structure to hold a user's answer along with context of the question it belongs to
+interface UserAnswerEntry {
+  answer: PopulatedAnswer;
+  question: {
+    id: string;
+    title: string;
+  };
 }
 
 
@@ -134,8 +144,9 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
     const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
       const populatedAnswers = (qDoc.answers || []).map(ans => {
          const answerAuthor = answerAuthorsMap.get(ans.authorId.toString()) || defaultAuthor;
+         const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
-          id: ans._id.toString(),
+          id: ansId,
           content: ans.content,
           author: answerAuthor,
           createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
@@ -158,7 +169,7 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
         updatedAt: validUpdatedAt,
         upvotes: qDoc.upvotes,
         downvotes: qDoc.downvotes,
-        views: qDoc.views, // Include views
+        views: qDoc.views,
         answers: populatedAnswers,
       };
     });
@@ -167,6 +178,71 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
     console.error('Error fetching questions by author ID for profile:', error);
     if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('querySrv ESERVFAIL') || error.message.includes('Authentication failed'))) {
       throw new Error(`Database connection issue for getQuestionsByAuthorId: ${error.message}`);
+    }
+    return [];
+  }
+}
+
+async function getAnswersByAuthorId(profileUserIdString: string): Promise<UserAnswerEntry[]> {
+  if (!ObjectId.isValid(profileUserIdString)) {
+    console.warn('Invalid profileUserIdString format for getAnswersByAuthorId:', profileUserIdString);
+    return [];
+  }
+
+  try {
+    const db = await connectToDatabase();
+    const questionsCollection = db.collection<QuestionDBDocument>('questions');
+    const usersCollection = db.collection<UserDBDocument>('users');
+
+    const profileUserObjectId = new ObjectId(profileUserIdString);
+    const profileUserDoc = await usersCollection.findOne({ _id: profileUserObjectId });
+
+    if (!profileUserDoc) {
+      console.warn(`Profile user ${profileUserIdString} not found for getAnswersByAuthorId.`);
+      return [];
+    }
+
+    const profileUserType: UserType = {
+      id: profileUserDoc._id.toString(),
+      name: profileUserDoc.name,
+      avatarUrl: profileUserDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileUserDoc.name[0]?.toUpperCase() || 'U'}`,
+    };
+    
+    // Find questions where this user has posted an answer
+    const questionDocs = await questionsCollection.find({ "answers.authorId": profileUserIdString }).sort({"answers.createdAt": -1}).toArray();
+    
+    const userAnswerEntries: UserAnswerEntry[] = [];
+
+    for (const qDoc of questionDocs) {
+      for (const ans of (qDoc.answers || [])) {
+        if (ans.authorId === profileUserIdString) {
+          const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
+          const populatedAnswer: PopulatedAnswer = {
+            id: ansId,
+            content: ans.content,
+            author: profileUserType, // The author of this answer is the profile user
+            createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+            upvotes: ans.upvotes,
+            downvotes: ans.downvotes,
+          };
+          userAnswerEntries.push({
+            answer: populatedAnswer,
+            question: {
+              id: qDoc._id.toString(),
+              title: qDoc.title,
+            },
+          });
+        }
+      }
+    }
+    // Sort answers by their own creation date, newest first
+    userAnswerEntries.sort((a, b) => new Date(b.answer.createdAt).getTime() - new Date(a.answer.createdAt).getTime());
+
+    return userAnswerEntries;
+  } catch (error) {
+    console.error('Error fetching answers by author ID for profile:', error);
+    if (error instanceof Error && (error.message.includes('ECONNREFUSED') || error.message.includes('querySrv ESERVFAIL') || error.message.includes('Authentication failed'))) {
+      throw new Error(`Database connection issue for getAnswersByAuthorId: ${error.message}`);
     }
     return [];
   }
@@ -187,11 +263,13 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
   let fetchedUser: UserDBDocument | null = null;
   let userQuestions: PopulatedQuestion[] = [];
+  let userAnswers: UserAnswerEntry[] = [];
 
   try {
     fetchedUser = await getUserById(params.userId);
     if (fetchedUser) {
       userQuestions = await getQuestionsByAuthorId(fetchedUser._id.toString());
+      userAnswers = await getAnswersByAuthorId(fetchedUser._id.toString());
     }
   } catch (dbError) {
      console.error("ProfilePage: Database error during data fetching", dbError);
@@ -206,9 +284,6 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     name: fetchedUser.name,
     avatarUrl: fetchedUser.avatarUrl || `https://placehold.co/128x128.png?text=${fetchedUser.name[0]?.toUpperCase() || 'U'}`,
   };
-
-  const userAnswersSummaryPlaceholder = userQuestions.reduce((acc, q) => acc + q.answers.filter(a => a.author.id === fetchedUser?._id.toString()).length, 0);
-
 
   const initials = displayUser.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
   const memberSince = fetchedUser.createdAt ? new Date(fetchedUser.createdAt).toLocaleDateString() : 'N/A';
@@ -233,7 +308,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
       <Tabs defaultValue="questions" className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:w-1/2 mx-auto">
           <TabsTrigger value="questions">My Questions ({userQuestions.length})</TabsTrigger>
-          <TabsTrigger value="answers" disabled>My Answers ({userAnswersSummaryPlaceholder})</TabsTrigger>
+          <TabsTrigger value="answers">My Answers ({userAnswers.length})</TabsTrigger>
         </TabsList>
         <TabsContent value="questions" className="mt-6 space-y-6">
           {userQuestions.length > 0 ? (
@@ -245,11 +320,27 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
           )}
         </TabsContent>
         <TabsContent value="answers" className="mt-6 space-y-4">
-            <p className="text-center text-muted-foreground py-8">
-              Feature to show your answers to other questions is coming soon!
-            </p>
+            {userAnswers.length > 0 ? (
+                userAnswers.map(entry => (
+                    <Card key={entry.answer.id} className="shadow-md">
+                        <CardHeader className="pb-2">
+                            <p className="text-sm text-muted-foreground">
+                                Answered on: <Link href={`/questions/${entry.question.id}`} className="text-primary hover:underline">{entry.question.title}</Link>
+                                <span className="mx-1">&bull;</span>
+                                {formatDistanceToNow(new Date(entry.answer.createdAt), { addSuffix: true })}
+                            </p>
+                        </CardHeader>
+                        <CardContent>
+                            <AnswerCard answer={entry.answer} />
+                        </CardContent>
+                    </Card>
+                ))
+            ) : (
+                 <p className="text-center text-muted-foreground py-8">You haven&apos;t answered any questions yet.</p>
+            )}
         </TabsContent>
       </Tabs>
     </div>
   );
 }
+
