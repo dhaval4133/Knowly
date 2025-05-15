@@ -1,3 +1,4 @@
+
 import Link from 'next/link';
 import type { Question } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -13,7 +14,12 @@ interface QuestionCardProps {
 
 export default function QuestionCard({ question }: QuestionCardProps) {
   const initials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
-  const timeAgo = formatDistanceToNow(new Date(question.createdAt), { addSuffix: true });
+  // Display updatedAt if different from createdAt, otherwise createdAt
+  const timeAgo = formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true });
+  const activityText = question.createdAt === question.updatedAt 
+    ? `asked ${formatDistanceToNow(new Date(question.createdAt), { addSuffix: true })}` 
+    : `modified ${timeAgo}`;
+
 
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -31,7 +37,7 @@ export default function QuestionCard({ question }: QuestionCardProps) {
           </Avatar>
           <span>{question.author.name}</span>
           <span>&bull;</span>
-          <time dateTime={question.createdAt}>{timeAgo}</time>
+          <time dateTime={question.updatedAt}>{activityText}</time>
         </div>
       </CardHeader>
       <CardContent>
@@ -47,11 +53,10 @@ export default function QuestionCard({ question }: QuestionCardProps) {
       <CardFooter className="text-sm text-muted-foreground flex justify-between items-center">
         <div className="flex items-center space-x-4">
           <span className="flex items-center">
-            <MessageCircle size={16} className="mr-1" /> {question.answers.length} Answers
+            <MessageCircle size={16} className="mr-1" /> {question.answers.length} Answer{question.answers.length !== 1 ? 's' : ''}
           </span>
-          {/* Placeholder for views */}
           <span className="flex items-center">
-            <Eye size={16} className="mr-1" /> {Math.floor(Math.random() * 1000)} Views
+            <Eye size={16} className="mr-1" /> {question.views} View{question.views !== 1 ? 's' : ''}
           </span>
         </div>
         <Link href={`/questions/${question.id}`} className="text-primary hover:underline">

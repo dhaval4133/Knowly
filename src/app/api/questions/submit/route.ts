@@ -83,15 +83,18 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Author not found.' }, { status: 404 });
     }
 
+    const now = new Date();
     const newQuestion = {
       title,
       description,
       tags, // Storing tags as an array of strings
       authorId: new ObjectId(authorId),
-      createdAt: new Date(),
+      createdAt: now,
+      updatedAt: now, // Initially createdAt and updatedAt are the same
       upvotes: 0,
       downvotes: 0,
-      answers: [], // Initialize with empty answers
+      views: 0, // Initialize views to 0
+      answers: [], 
     };
 
     const result = await questionsCollection.insertOne(newQuestion);

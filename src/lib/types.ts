@@ -12,10 +12,10 @@ export interface Tag {
 
 // This represents an Answer as it might be stored/retrieved with authorId
 export interface AnswerData {
-  _id: string; // or ObjectId if using MongoDB directly in this type
+  _id: string; // string representation of ObjectId
   content: string;
-  authorId: string; // or ObjectId
-  createdAt: string; // ISO string date
+  authorId: string; // string representation of ObjectId
+  createdAt: Date; // Store as Date in DB object, convert to ISO string for PopulatedAnswer
   upvotes: number;
   downvotes: number;
 }
@@ -33,10 +33,12 @@ export interface QuestionData {
   description: string;
   tags: string[]; // Storing tags as an array of strings in DB
   authorId: string; // or ObjectId
-  createdAt: string; // ISO string date
+  createdAt: Date; 
+  updatedAt: Date; // For sorting by recent activity
   upvotes: number;
   downvotes: number;
-  answers: AnswerData[]; // Or Answer[] if answers are fully embedded with populated authors
+  views: number; // For actual view count
+  answers: AnswerData[]; 
 }
 
 // This represents a Question with its author and tags (as Tag objects) populated
@@ -46,8 +48,10 @@ export interface Question {
   description: string;
   tags: Tag[]; // Tags as Tag objects for display components
   author: User;
-  createdAt: string; // ISO string date
+  createdAt: string; // ISO string date for display
+  updatedAt: string; // ISO string date for display
   upvotes: number;
   downvotes: number;
+  views: number;
   answers: Answer[]; // Answers with populated authors
 }

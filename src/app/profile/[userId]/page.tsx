@@ -6,7 +6,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import QuestionCard from '@/components/question/question-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
-import type { AnswerData } from '@/lib/types';
+import type { AnswerData, QuestionData } from '@/lib/types';
 
 
 interface ProfilePageProps {
@@ -21,17 +21,13 @@ interface UserDBDocument extends WithId<Document> {
   avatarUrl?: string;
 }
 
-interface QuestionDBDocument {
+// Specific type for Question documents from MongoDB, extending QuestionData
+interface QuestionDBDocument extends QuestionData {
   _id: ObjectId;
-  title: string;
-  description: string;
-  tags: string[]; // Tags stored as strings
   authorId: ObjectId;
-  createdAt: Date;
-  upvotes: number;
-  downvotes: number;
-  answers: AnswerData[];
+   // answers is already in QuestionData as AnswerData[]
 }
+
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
@@ -95,15 +91,15 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
   try {
     const db = await connectToDatabase();
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
-    const usersCollection = db.collection<UserDBDocument>('users'); // For fetching authors of answers if needed
+    const usersCollection = db.collection<UserDBDocument>('users'); 
     const authorObjectId = new ObjectId(authorIdString);
 
-    const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ createdAt: -1 }).toArray();
+    const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
     
     const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
     if (!profileAuthorDoc) {
         console.warn(`Author ${authorIdString} not found for their own questions.`);
-        return []; // Or handle as appropriate
+        return []; 
     }
     const profileAuthor: UserType = {
       id: profileAuthorDoc._id.toString(),
@@ -111,7 +107,6 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
       avatarUrl: profileAuthorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileAuthorDoc.name[0]?.toUpperCase() || 'U'}`,
     };
 
-    // Collect all unique authorIds from answers to fetch them in bulk
     const answerAuthorIds = new Set<string>();
     questionDocs.forEach(qDoc => {
       (qDoc.answers || []).forEach(ans => {
@@ -140,10 +135,10 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
       const populatedAnswers = (qDoc.answers || []).map(ans => {
          const answerAuthor = answerAuthorsMap.get(ans.authorId.toString()) || defaultAuthor;
         return {
-          id: (ans._id || new ObjectId()).toString(),
+          id: ans._id.toString(),
           content: ans.content,
           author: answerAuthor,
-          createdAt: new Date(ans.createdAt).toISOString(),
+          createdAt: new Date(ans.createdAt).toISOString(), // ans.createdAt is Date
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
@@ -153,11 +148,13 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
         id: qDoc._id.toString(),
         title: qDoc.title,
         description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), // Map string[] to Tag[]
-        author: profileAuthor, // Author of the question is the profile owner
+        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
+        author: profileAuthor,
         createdAt: new Date(qDoc.createdAt).toISOString(),
+        updatedAt: new Date(qDoc.updatedAt).toISOString(),
         upvotes: qDoc.upvotes,
         downvotes: qDoc.downvotes,
+        views: qDoc.views, // Include views
         answers: populatedAnswers,
       };
     });
@@ -206,10 +203,6 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
     avatarUrl: fetchedUser.avatarUrl || `https://placehold.co/128x128.png?text=${fetchedUser.name[0]?.toUpperCase() || 'U'}`,
   };
 
-  // Mock answers for "My Answers" tab can be replaced with real data later
-  // For now, let's count answers from the questions fetched, though this is not ideal
-  // as it doesn't represent *answers given by this user to *other* questions*.
-  // This tab would ideally fetch answers where authorId matches params.userId.
   const userAnswersSummaryPlaceholder = userQuestions.reduce((acc, q) => acc + q.answers.filter(a => a.author.id === fetchedUser?._id.toString()).length, 0);
 
 

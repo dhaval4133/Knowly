@@ -5,20 +5,20 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Search, AlertTriangle } from 'lucide-react';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
-import type { AnswerData } from '@/lib/types'; // Using AnswerData for direct DB structure
+import type { AnswerData, QuestionData } from '@/lib/types';
 
 // Define a more specific type for Question documents from MongoDB
-interface QuestionDBDocument {
+interface QuestionDBDocument extends QuestionData { // Inherits fields from QuestionData
   _id: ObjectId;
-  title: string;
-  description: string;
-  tags: string[]; // Tags stored as strings
   authorId: ObjectId;
-  createdAt: Date;
-  upvotes: number;
-  downvotes: number;
-  answers: AnswerData[]; // Array of AnswerData objects
+  answers: AnswerDBDocument[]; // Use specific DB type for answers if different
 }
+
+interface AnswerDBDocument extends AnswerData { // Inherits fields from AnswerData
+    _id: ObjectId; // Ensure _id is ObjectId for direct DB type
+    authorId: ObjectId;
+}
+
 
 interface UserDBDocument extends WithId<Document> {
   _id: ObjectId;
@@ -57,23 +57,23 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
     const usersCollection = db.collection<UserDBDocument>('users');
 
-    const questionDocs = await questionsCollection.find().sort({ createdAt: -1 }).toArray();
+    // Sort by updatedAt descending for most recent activity
+    const questionDocs = await questionsCollection.find().sort({ updatedAt: -1 }).toArray();
     
-    const authorIds = [...new Set(questionDocs.map(q => q.authorId))];
-    
-    // Collect authorIds from answers as well
+    const authorIds = new Set<ObjectId>();
     questionDocs.forEach(qDoc => {
+      authorIds.add(qDoc.authorId);
       (qDoc.answers || []).forEach(ans => {
         if (ans.authorId && ObjectId.isValid(ans.authorId.toString())) {
-          authorIds.push(new ObjectId(ans.authorId.toString()));
+           // Ensure ans.authorId is treated as ObjectId if it's stored as string ObjectId
+          authorIds.add(new ObjectId(ans.authorId.toString()));
         }
       });
     });
     
-    const uniqueAuthorIds = [...new Set(authorIds.filter(id => ObjectId.isValid(id)))];
+    const uniqueAuthorIdsArray = Array.from(authorIds);
 
-
-    const authorsArray = await usersCollection.find({ _id: { $in: uniqueAuthorIds } }).toArray();
+    const authorsArray = await usersCollection.find({ _id: { $in: uniqueAuthorIdsArray } }).toArray();
     const authorsMap = new Map<string, UserType>();
     authorsArray.forEach(authorDoc => {
       authorsMap.set(authorDoc._id.toString(), {
@@ -89,12 +89,13 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
       const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
       
       const populatedAnswers = (qDoc.answers || []).map(ans => {
+        // ans.authorId is string here from AnswerData, convert to string for map lookup
         const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
         return {
-          id: ans._id.toString(),
+          id: ans._id.toString(), // ans._id is string
           content: ans.content,
           author: answerAuthor,
-          createdAt: new Date(ans.createdAt).toISOString(),
+          createdAt: new Date(ans.createdAt).toISOString(), // ans.createdAt is Date
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
@@ -104,11 +105,13 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
         id: qDoc._id.toString(),
         title: qDoc.title,
         description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), // Map string[] to Tag[]
+        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
         author: questionAuthor,
         createdAt: new Date(qDoc.createdAt).toISOString(),
+        updatedAt: new Date(qDoc.updatedAt).toISOString(),
         upvotes: qDoc.upvotes,
         downvotes: qDoc.downvotes,
+        views: qDoc.views, // Include views
         answers: populatedAnswers,
       };
     });
@@ -116,8 +119,6 @@ async function getAllQuestions(): Promise<PopulatedQuestion[]> {
     return populatedQuestions;
   } catch (error) {
     console.error('Error fetching questions for homepage:', error);
-    // In case of DB error, return empty array to prevent page crash
-    // A more sophisticated error handling might be needed for production
     return []; 
   }
 }

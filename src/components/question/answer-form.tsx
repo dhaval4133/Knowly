@@ -1,11 +1,14 @@
+
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 interface AnswerFormProps {
   questionId: string;
@@ -15,6 +18,7 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -28,17 +32,39 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
     }
 
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('/api/answers/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId, content }),
+      });
 
-    console.log({ questionId, content });
-    toast({
-      title: "Answer Submitted!",
-      description: "Your answer has been posted (mock submission).",
-    });
-    setContent('');
-    setIsSubmitting(false);
-    // Here you would typically revalidate data or redirect
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: "Answer Submitted!",
+          description: data.message || "Your answer has been posted.",
+        });
+        setContent('');
+        router.refresh(); // Revalidate data on the current page to show the new answer
+      } else {
+        toast({
+          title: "Submission Failed",
+          description: data.message || "Could not post your answer.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error submitting answer:", error);
+      toast({
+        title: "Submission Error",
+        description: "An unexpected error occurred while submitting your answer.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -63,6 +89,7 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
         </CardContent>
         <CardFooter>
           <Button type="submit" size="lg" disabled={isSubmitting || !content.trim()}>
+            {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {isSubmitting ? 'Submitting...' : 'Post Your Answer'}
           </Button>
         </CardFooter>

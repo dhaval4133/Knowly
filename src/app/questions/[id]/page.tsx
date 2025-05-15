@@ -10,23 +10,17 @@ import AnswerForm from '@/components/question/answer-form';
 import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow } from 'date-fns';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
-import type { AnswerData } from '@/lib/types';
+import type { AnswerData, QuestionData } from '@/lib/types';
 
 interface QuestionPageProps {
   params: { id: string };
 }
 
-// Define a more specific type for Question documents from MongoDB
-interface QuestionDBDocument {
+// Specific type for Question documents from MongoDB, extending QuestionData
+interface QuestionDBDocument extends QuestionData {
   _id: ObjectId;
-  title: string;
-  description: string;
-  tags: string[]; // Tags stored as strings
   authorId: ObjectId;
-  createdAt: Date;
-  upvotes: number;
-  downvotes: number;
-  answers: AnswerData[]; // Array of AnswerData objects, could be more complex with embedded authors
+  // answers already defined in QuestionData as AnswerData[]
 }
 
 interface UserDBDocument extends WithId<Document> {
@@ -71,14 +65,27 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
     const db = await connectToDatabase();
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
     const usersCollection = db.collection<UserDBDocument>('users');
+    const questionObjectId = new ObjectId(id);
 
-    const questionDoc = await questionsCollection.findOne({ _id: new ObjectId(id) });
+    // Increment views atomically and get the updated document
+    // Using findOneAndUpdate to get the document *after* the increment
+    // However, for simplicity and to avoid needing the new doc immediately for this specific increment,
+    // we can fetch first, then increment. The displayed view count can be handled.
+    
+    const questionDoc = await questionsCollection.findOne({ _id: questionObjectId });
 
     if (!questionDoc) {
       return null;
     }
 
-    // Collect all authorIds that need fetching (question author + answer authors)
+    // Increment views - fire and forget or await if critical.
+    // For a slightly more "actual" view on this load, we'll adjust the view count before returning.
+    await questionsCollection.updateOne(
+      { _id: questionObjectId },
+      { $inc: { views: 1 } }
+    );
+    const currentViews = questionDoc.views + 1; // Reflects the current view
+
     const authorIdsToFetch = new Set<ObjectId>();
     authorIdsToFetch.add(questionDoc.authorId);
     (questionDoc.answers || []).forEach(ans => {
@@ -105,10 +112,10 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
     const populatedAnswers: PopulatedAnswer[] = (questionDoc.answers || []).map(ans => {
       const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
       return {
-        id: (ans._id || new ObjectId()).toString(), // Ensure ans has an id or generate one
+        id: ans._id.toString(), 
         content: ans.content,
         author: answerAuthor,
-        createdAt: new Date(ans.createdAt).toISOString(),
+        createdAt: new Date(ans.createdAt).toISOString(), // ans.createdAt is Date
         upvotes: ans.upvotes,
         downvotes: ans.downvotes,
       };
@@ -118,16 +125,17 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       id: questionDoc._id.toString(),
       title: questionDoc.title,
       description: questionDoc.description,
-      tags: questionDoc.tags.map(tag => ({ id: tag, name: tag })), // Map string[] to Tag[]
+      tags: questionDoc.tags.map(tag => ({ id: tag, name: tag })),
       author: questionAuthor,
       createdAt: new Date(questionDoc.createdAt).toISOString(),
+      updatedAt: new Date(questionDoc.updatedAt).toISOString(),
       upvotes: questionDoc.upvotes,
       downvotes: questionDoc.downvotes,
+      views: currentViews, // Use the incremented view count
       answers: populatedAnswers,
     };
   } catch (error) {
     console.error('Error fetching question by ID:', error);
-    // Let notFound handle it if an error occurs during DB fetch
     return null; 
   }
 }
@@ -152,6 +160,9 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
   const questionAuthorInitials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
   const questionTimeAgo = formatDistanceToNow(new Date(question.createdAt), { addSuffix: true });
+  const askedOrModifiedText = question.createdAt === question.updatedAt 
+    ? `Asked ${questionTimeAgo}` 
+    : `Modified ${formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true })}`;
 
   return (
     <div className="space-y-8">
@@ -166,9 +177,11 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
               <AvatarImage src={question.author.avatarUrl} alt={question.author.name} data-ai-hint="user avatar" />
               <AvatarFallback>{questionAuthorInitials}</AvatarFallback>
             </Avatar>
-            <span>Asked by {question.author.name}</span>
+            <span>{question.author.name}</span>
             <span>&bull;</span>
-            <time dateTime={question.createdAt}>{questionTimeAgo}</time>
+            <time dateTime={question.updatedAt}>{askedOrModifiedText}</time>
+            <span>&bull;</span>
+            <span>{question.views} views</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {question.tags.map((tag) => (
@@ -202,7 +215,6 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
       <div>
         <h2 className="text-2xl font-semibold mb-4">Your Answer</h2>
-        {/* Note: AnswerForm currently uses mock submission logic */}
         <AnswerForm questionId={question.id} />
       </div>
     </div>
