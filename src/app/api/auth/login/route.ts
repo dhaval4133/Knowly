@@ -21,12 +21,33 @@ let cachedDb: Db | null = null;
 
 async function connectToDatabase() {
   if (cachedClient && cachedDb) {
+    // console.log('Using cached database instance for login.');
     return cachedDb;
   }
-  if(!cachedClient) {
-    cachedClient = new MongoClient(MONGODB_URI!);
-    await cachedClient.connect();
+
+  if (!cachedClient) {
+    console.log('No cached client for login, creating new MongoClient instance.');
+    if (!MONGODB_URI) {
+      console.error('CRITICAL: MONGODB_URI is not defined at connectToDatabase call for login.');
+      throw new Error('MONGODB_URI is not defined. This should have been caught by top-level check.');
+    }
+    cachedClient = new MongoClient(MONGODB_URI);
+    try {
+      console.log('Attempting to connect to MongoDB for login...');
+      await cachedClient.connect();
+      console.log('MongoDB connected successfully for login.');
+    } catch (err) {
+      console.error('Failed to connect to MongoDB for login:', err);
+      cachedClient = null; // Reset client on connection failure
+      throw err;
+    }
   }
+
+  if (!MONGODB_DB_NAME) {
+    console.error('CRITICAL: MONGODB_DB_NAME is not defined at connectToDatabase call for login.');
+    throw new Error('MONGODB_DB_NAME is not defined. This should have been caught by top-level check.');
+  }
+  console.log(`Getting database for login: ${MONGODB_DB_NAME}`);
   cachedDb = cachedClient.db(MONGODB_DB_NAME);
   return cachedDb;
 }
@@ -34,26 +55,35 @@ async function connectToDatabase() {
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
+    console.log('Login attempt for email:', email);
 
     if (!email || !password) {
+      console.log('Login validation failed: Email or password missing for', email);
       return NextResponse.json({ success: false, message: 'Email and password are required.' }, { status: 400 });
     }
+    console.log('Login input validation passed for email:', email);
     
     const db = await connectToDatabase();
+    console.log('Database connection supposedly successful for login of:', email);
     const usersCollection = db.collection('users');
 
+    console.log('Searching for user:', email);
     const user = await usersCollection.findOne({ email });
 
     if (!user) {
+      console.log('Login failed: User not found for email:', email);
       return NextResponse.json({ success: false, message: 'Invalid credentials.' }, { status: 401 });
     }
+    console.log('User found for email:', email, '. Verifying password.');
 
     const isPasswordValid = await bcrypt.compare(password, user.password as string); 
 
     if (!isPasswordValid) {
+      console.log('Login failed: Invalid password for email:', email);
       return NextResponse.json({ success: false, message: 'Invalid credentials.' }, { status: 401 });
     }
     
+    console.log('Login successful for email:', email, 'User ID:', user._id.toString());
     // TODO: Implement session creation (e.g., JWT, next-auth)
     // For now, just return basic user info (excluding password)
     return NextResponse.json({ 
@@ -65,10 +95,22 @@ export async function POST(req: NextRequest) {
 
   } catch (error) {
     console.error('Login API error:', error);
-    // Check if it's a MongoDB connection error
-    if (error instanceof Error && error.message.includes('ECONNREFUSED')) {
-        return NextResponse.json({ success: false, message: 'Failed to connect to the database. Please check your connection string and ensure the database server is running.' }, { status: 503 }); // 503 Service Unavailable
+    let errorMessage = 'An internal server error occurred during login.';
+    let errorStatus = 500;
+
+    if (error instanceof Error) {
+      if (error.message.includes('ECONNREFUSED')) {
+        errorMessage = 'Failed to connect to the database. Please check your connection string and ensure the database server is running.';
+        errorStatus = 503; // Service Unavailable
+      } else if (error.message.includes('querySrv ESERVFAIL') || error.message.includes('queryTxt ESERVFAIL')) {
+        errorMessage = 'Database connection failed: DNS resolution error. Check your MongoDB URI and network settings.';
+        errorStatus = 503;
+      } else if (error.message.includes('bad auth') || error.message.includes('Authentication failed')) {
+        errorMessage = 'Database connection failed: Authentication error. Check your MongoDB credentials.';
+        errorStatus = 503;
+      }
+      // Add more specific MongoDB error checks if needed
     }
-    return NextResponse.json({ success: false, message: 'An internal server error occurred.' }, { status: 500 });
+    return NextResponse.json({ success: false, message: errorMessage }, { status: errorStatus });
   }
 }
