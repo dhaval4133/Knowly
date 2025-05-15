@@ -1,27 +1,72 @@
 
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, LogIn } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface AnswerFormProps {
   questionId: string;
 }
 
+interface CurrentUser {
+  userId: string;
+  userName: string;
+}
+
 export default function AnswerForm({ questionId }: AnswerFormProps) {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
 
+  useEffect(() => {
+    const fetchUserSession = async () => {
+      setIsLoadingUser(true);
+      try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.user) {
+            setCurrentUser(data.user);
+          } else {
+            setCurrentUser(null);
+          }
+        } else {
+          setCurrentUser(null);
+        }
+      } catch (error) {
+        console.error("Error fetching user session for AnswerForm:", error);
+        setCurrentUser(null);
+      } finally {
+        setIsLoadingUser(false);
+      }
+    };
+
+    fetchUserSession();
+  }, []);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (!currentUser) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to post an answer.",
+        variant: "destructive",
+      });
+      router.push('/login');
+      return;
+    }
+
     if (!content.trim()) {
       toast({
         title: "Empty Answer",
@@ -51,9 +96,12 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
       } else {
         toast({
           title: "Submission Failed",
-          description: data.message || "Could not post your answer.",
+          description: data.message || "Could not post your answer. Please log in if you haven't.",
           variant: "destructive",
         });
+         if (response.status === 401 && !data.success) { // Unauthorized
+            router.push('/login');
+        }
       }
     } catch (error) {
       console.error("Error submitting answer:", error);
@@ -67,15 +115,56 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
     }
   };
 
+  if (isLoadingUser) {
+    return (
+      <Card className="shadow-md">
+        <CardHeader>
+          <Skeleton className="h-6 w-1/3 mb-2" />
+           <Skeleton className="h-4 w-2/3" />
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-24 w-full" />
+        </CardContent>
+        <CardFooter>
+          <Skeleton className="h-10 w-36" />
+        </CardFooter>
+      </Card>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <Card className="shadow-md text-center">
+        <CardHeader>
+          <CardTitle className="text-xl">Want to share your knowledge?</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground mb-4">
+            Please log in to post your answer and help the community.
+          </p>
+        </CardContent>
+        <CardFooter className="flex justify-center">
+          <Button asChild size="lg">
+            <Link href="/login">
+              <LogIn className="mr-2 h-5 w-5" /> Log In to Answer
+            </Link>
+          </Button>
+        </CardFooter>
+      </Card>
+    );
+  }
+
   return (
     <Card className="shadow-md">
       <form onSubmit={handleSubmit}>
-        <CardContent className="space-y-4 pt-6">
+         <CardHeader>
+          <Label htmlFor="answer-content" className="text-xl font-semibold">Your Answer</Label>
+          <p className="text-sm text-muted-foreground">
+            Share your knowledge. Use Markdown for formatting if needed.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="answer-content" className="text-lg font-medium">Your Answer</Label>
-            <p className="text-sm text-muted-foreground mb-2">
-              Share your knowledge. Use Markdown for formatting if needed.
-            </p>
             <Textarea
               id="answer-content"
               value={content}
