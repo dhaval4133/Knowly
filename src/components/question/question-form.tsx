@@ -134,6 +134,9 @@ export default function QuestionForm() {
           description: data.message || "Could not post your question. Please try again.",
           variant: "destructive",
         });
+        if (response.status === 401) { // If unauthorized, redirect to login
+            router.push('/login');
+        }
       }
     } catch (error) {
       console.error("Error submitting question:", error);

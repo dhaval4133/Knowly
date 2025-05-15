@@ -26,7 +26,7 @@ export default function AskQuestionPage() {
             toast({
               title: 'Authentication Required',
               description: 'Please log in to ask a question.',
-              variant: 'destructive',
+              variant: 'default', // Changed from 'destructive'
             });
             router.replace('/login');
             return; // Stop further execution in this path
