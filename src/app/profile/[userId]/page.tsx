@@ -138,11 +138,15 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
           id: ans._id.toString(),
           content: ans.content,
           author: answerAuthor,
-          createdAt: new Date(ans.createdAt).toISOString(), // ans.createdAt is Date
+          createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
       });
+
+      const validCreatedAt = qDoc.createdAt ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
+      const validUpdatedAt = qDoc.updatedAt ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
+
 
       return {
         id: qDoc._id.toString(),
@@ -150,8 +154,8 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
         description: qDoc.description,
         tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
         author: profileAuthor,
-        createdAt: new Date(qDoc.createdAt).toISOString(),
-        updatedAt: new Date(qDoc.updatedAt).toISOString(),
+        createdAt: validCreatedAt,
+        updatedAt: validUpdatedAt,
         upvotes: qDoc.upvotes,
         downvotes: qDoc.downvotes,
         views: qDoc.views, // Include views

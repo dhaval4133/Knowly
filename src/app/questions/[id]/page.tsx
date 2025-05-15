@@ -115,11 +115,14 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
         id: ans._id.toString(), 
         content: ans.content,
         author: answerAuthor,
-        createdAt: new Date(ans.createdAt).toISOString(), // ans.createdAt is Date
+        createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
         upvotes: ans.upvotes,
         downvotes: ans.downvotes,
       };
     });
+    
+    const validCreatedAt = questionDoc.createdAt ? new Date(questionDoc.createdAt).toISOString() : new Date(0).toISOString();
+    const validUpdatedAt = questionDoc.updatedAt ? new Date(questionDoc.updatedAt).toISOString() : validCreatedAt;
 
     return {
       id: questionDoc._id.toString(),
@@ -127,8 +130,8 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       description: questionDoc.description,
       tags: questionDoc.tags.map(tag => ({ id: tag, name: tag })),
       author: questionAuthor,
-      createdAt: new Date(questionDoc.createdAt).toISOString(),
-      updatedAt: new Date(questionDoc.updatedAt).toISOString(),
+      createdAt: validCreatedAt,
+      updatedAt: validUpdatedAt,
       upvotes: questionDoc.upvotes,
       downvotes: questionDoc.downvotes,
       views: currentViews, // Use the incremented view count
