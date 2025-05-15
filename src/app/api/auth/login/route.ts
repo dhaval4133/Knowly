@@ -3,8 +3,9 @@
 'use server';
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { MongoClient, Db } from 'mongodb';
+import { MongoClient, Db, ObjectId } from 'mongodb';
 import bcrypt from 'bcryptjs';
+import { cookies } from 'next/headers';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
@@ -21,12 +22,20 @@ let cachedDb: Db | null = null;
 
 async function connectToDatabase() {
   if (cachedClient && cachedDb) {
-    // console.log('Using cached database instance for login.');
-    return cachedDb;
+    try {
+      // Ping the database to ensure the connection is still alive
+      await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
+      // console.log('Using cached database instance for login.');
+      return cachedDb;
+    } catch (e) {
+      console.warn('Cached MongoDB connection lost, attempting to reconnect...', e);
+      cachedClient = null;
+      cachedDb = null;
+    }
   }
 
   if (!cachedClient) {
-    console.log('No cached client for login, creating new MongoClient instance.');
+    console.log('No cached client or connection lost for login, creating new MongoClient instance.');
     if (!MONGODB_URI) {
       console.error('CRITICAL: MONGODB_URI is not defined at connectToDatabase call for login.');
       throw new Error('MONGODB_URI is not defined. This should have been caught by top-level check.');
@@ -83,14 +92,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid credentials.' }, { status: 401 });
     }
     
-    console.log('Login successful for email:', email, 'User ID:', user._id.toString());
-    // TODO: Implement session creation (e.g., JWT, next-auth)
-    // For now, just return basic user info (excluding password)
+    const userId = user._id.toString();
+    const userName = user.name as string;
+    console.log('Login successful for email:', email, 'User ID:', userId);
+
+    // Set HttpOnly cookie for session management
+    cookies().set('knowly-session-id', userId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 7, // 1 week
+      path: '/',
+      sameSite: 'lax', // or 'strict'
+    });
+    
     return NextResponse.json({ 
         success: true, 
         message: 'Login successful', 
-        userId: user._id.toString(), 
-        userName: user.name 
+        userId: userId, 
+        userName: userName
     }, { status: 200 });
 
   } catch (error) {
@@ -109,7 +128,6 @@ export async function POST(req: NextRequest) {
         errorMessage = 'Database connection failed: Authentication error. Check your MongoDB credentials.';
         errorStatus = 503;
       }
-      // Add more specific MongoDB error checks if needed
     }
     return NextResponse.json({ success: false, message: errorMessage }, { status: errorStatus });
   }

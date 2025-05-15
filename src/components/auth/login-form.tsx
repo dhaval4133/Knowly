@@ -37,16 +37,18 @@ export default function LoginForm() {
           title: 'Login Successful',
           description: data.message || `Welcome back, ${data.userName}!`,
         });
-        localStorage.setItem('knowlyUser', JSON.stringify({ userId: data.userId, userName: data.userName }));
+        // No longer using localStorage. Server sets HttpOnly cookie.
+        // Client redirects, header will re-fetch user info.
         router.push(`/profile/${data.userId}`);
-        router.refresh(); // Helps ensure layout/header updates
+        // router.refresh() might still be useful to ensure layout re-renders
+        // and picks up changes if the header's /api/auth/me call needs it.
+        // However, the `useEffect` in header with `pathname` dependency should trigger it.
       } else {
         toast({
           title: 'Login Failed',
           description: data.message || 'Invalid email or password.',
           variant: 'destructive',
         });
-        localStorage.removeItem('knowlyUser');
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -55,7 +57,6 @@ export default function LoginForm() {
         description: 'An unexpected error occurred. Please try again.',
         variant: 'destructive',
       });
-      localStorage.removeItem('knowlyUser');
     } finally {
       setIsLoading(false);
     }
