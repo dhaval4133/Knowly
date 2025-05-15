@@ -3,13 +3,15 @@ import type { User as UserType, Question as PopulatedQuestion, Answer as Populat
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import QuestionCard from '@/components/question/question-card';
 import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { ArrowRight } from 'lucide-react';
 
 
 interface ProfilePageProps {
@@ -149,14 +151,14 @@ async function getQuestionsByAuthorId(authorIdString: string): Promise<Populated
           id: ansId,
           content: ans.content,
           author: answerAuthor,
-          createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+          createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
       });
 
-      const validCreatedAt = qDoc.createdAt ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
-      const validUpdatedAt = qDoc.updatedAt ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
+      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
+      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
 
 
       return {
@@ -221,7 +223,7 @@ async function getAnswersByAuthorId(profileUserIdString: string): Promise<UserAn
             id: ansId,
             content: ans.content,
             author: profileUserType, // The author of this answer is the profile user
-            createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+            createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
             upvotes: ans.upvotes,
             downvotes: ans.downvotes,
           };
@@ -325,7 +327,7 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                     <Card key={entry.answer.id} className="shadow-md">
                         <CardHeader className="pb-2">
                             <p className="text-sm text-muted-foreground">
-                                Answered on: <Link href={`/questions/${entry.question.id}`} className="text-primary hover:underline">{entry.question.title}</Link>
+                                Answered on: <Link href={`/questions/${entry.question.id}`} className="text-primary hover:underline font-medium">{entry.question.title}</Link>
                                 <span className="mx-1">&bull;</span>
                                 {formatDistanceToNow(new Date(entry.answer.createdAt), { addSuffix: true })}
                             </p>
@@ -333,6 +335,14 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
                         <CardContent>
                             <AnswerCard answer={entry.answer} />
                         </CardContent>
+                        <CardFooter className="pt-4 flex justify-end">
+                            <Button asChild variant="outline" size="sm">
+                                <Link href={`/questions/${entry.question.id}`}>
+                                    View Full Question
+                                    <ArrowRight className="ml-2 h-4 w-4" />
+                                </Link>
+                            </Button>
+                        </CardFooter>
                     </Card>
                 ))
             ) : (
@@ -344,3 +354,5 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   );
 }
 
+
+    
