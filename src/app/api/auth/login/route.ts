@@ -3,13 +3,14 @@
 'use server';
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { findMockUser } from '@/lib/mock-auth-store';
 
-// You would need to install and import a MongoDB client and a password hashing library
-// e.g., import { MongoClient } from 'mongodb';
-// e.g., import bcrypt from 'bcryptjs'; // or any other hashing library
+// MongoDB related comments are kept for future reference if you integrate a real DB
+// import { MongoClient } from 'mongodb';
+// import bcrypt from 'bcryptjs';
 
-// const MONGODB_URI = process.env.MONGODB_URI; // Set this in your .env file
-// const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME; // Set this in your .env file
+// const MONGODB_URI = process.env.MONGODB_URI;
+// const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
 
 // if (!MONGODB_URI) {
 //   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
@@ -54,20 +55,16 @@ export async function POST(req: NextRequest) {
     // }
     // --- END: MongoDB Integration Placeholder ---
     
-    // --- Mock logic (replace with actual DB logic above) ---
-    if (email === 'test@example.com' && password === 'password') {
+    // --- Mock logic using in-memory store ---
+    const user = findMockUser(email, password);
+
+    if (user) {
       // TODO: Implement session creation (e.g., JWT, next-auth)
-      return NextResponse.json({ success: true, message: 'Login successful (mock)' }, { status: 200 });
+      return NextResponse.json({ success: true, message: 'Login successful (mock)', userId: user.id, userName: user.name }, { status: 200 });
     } else {
       return NextResponse.json({ success: false, message: 'Invalid credentials (mock).' }, { status: 401 });
     }
     // --- End Mock logic ---
-
-
-    // If login is successful:
-    // TODO: Create a session token (e.g., JWT) and return it to the client.
-    // For now, just returning a success message.
-    // return NextResponse.json({ success: true, message: 'Login successful!', userId: user._id /* or some other user identifier */ }, { status: 200 });
 
   } catch (error) {
     console.error('Login API error:', error);

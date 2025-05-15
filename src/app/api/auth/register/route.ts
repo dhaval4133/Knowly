@@ -3,13 +3,14 @@
 'use server';
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { addMockUser } from '@/lib/mock-auth-store';
 
-// You would need to install and import a MongoDB client and a password hashing library
-// e.g., import { MongoClient } from 'mongodb';
-// e.g., import bcrypt from 'bcryptjs'; // or any other hashing library
+// MongoDB related comments are kept for future reference if you integrate a real DB
+// import { MongoClient } from 'mongodb';
+// import bcrypt from 'bcryptjs';
 
-// const MONGODB_URI = process.env.MONGODB_URI; // Set this in your .env file
-// const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME; // Set this in your .env file
+// const MONGODB_URI = process.env.MONGODB_URI;
+// const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
 
 // if (!MONGODB_URI) {
 //   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
@@ -62,17 +63,14 @@ export async function POST(req: NextRequest) {
     // const result = await usersCollection.insertOne(newUser);
     // --- END: MongoDB Integration Placeholder ---
 
-    // --- Mock logic (replace with actual DB logic above) ---
-    console.log('Mock registration for:', { name, email, password });
-    // In a real scenario, check if user exists, hash password, then insert.
-    // For this mock, we'll assume success unless it's a known "failing" email.
-    if (email === 'fail@example.com') {
-        return NextResponse.json({ success: false, message: 'This email is blocked (mock).' }, { status: 400 });
+    // --- Mock logic using in-memory store ---
+    const registrationResult = addMockUser({ name, email, passwordRaw: password });
+    if (registrationResult.success) {
+      return NextResponse.json({ success: true, message: registrationResult.message, userId: registrationResult.userId }, { status: 201 });
+    } else {
+      return NextResponse.json({ success: false, message: registrationResult.message }, { status: 409 }); // 409 Conflict if user exists
     }
     // --- End Mock logic ---
-
-    // If registration is successful:
-    return NextResponse.json({ success: true, message: 'Account created successfully! (mock)' /* , userId: result.insertedId */ }, { status: 201 });
 
   } catch (error) {
     console.error('Registration API error:', error);
