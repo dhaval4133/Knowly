@@ -7,6 +7,7 @@ import TagBadge from '@/components/shared/tag-badge';
 import VoteButtons from '@/components/shared/vote-buttons';
 import AnswerCard from '@/components/question/answer-card';
 import AnswerForm from '@/components/question/answer-form';
+import QuestionActions from '@/components/question/question-actions'; // New component
 import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow } from 'date-fns';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
@@ -82,11 +83,15 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       return null;
     }
 
-    await questionsCollection.updateOne(
+    // Increment view count if the document has the field, otherwise initialize if it doesn't exist
+    const updateResult = await questionsCollection.updateOne(
       { _id: questionObjectId },
       { $inc: { views: 1 } }
     );
-    const currentViews = (questionDoc.views || 0) + 1; 
+    // If views field didn't exist, it would be NaN after $inc. So, ensure it's a number.
+    // For the current display, we'll rely on the updated document or the original + 1.
+    const currentViews = (questionDoc.views || 0) + (updateResult.modifiedCount > 0 || !questionDoc.views ? 1 : 0);
+
 
     const authorIdsToFetch = new Set<ObjectId>();
     authorIdsToFetch.add(questionDoc.authorId);
@@ -114,18 +119,25 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
     const populatedAnswers: PopulatedAnswer[] = (questionDoc.answers || []).map(ans => {
       const answerAuthor = authorsMap.get(ans.authorId.toString()) || defaultAuthor;
       const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
+      const validAnswerCreatedAt = ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) 
+                               ? new Date(ans.createdAt).toISOString() 
+                               : new Date(0).toISOString();
       return {
         id: ansId, 
         content: ans.content,
         author: answerAuthor,
-        createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+        createdAt: validAnswerCreatedAt,
         upvotes: ans.upvotes,
         downvotes: ans.downvotes,
       };
     });
     
-    const validCreatedAt = questionDoc.createdAt && (questionDoc.createdAt instanceof Date || !isNaN(new Date(questionDoc.createdAt).getTime())) ? new Date(questionDoc.createdAt).toISOString() : new Date(0).toISOString();
-    const validUpdatedAt = questionDoc.updatedAt && (questionDoc.updatedAt instanceof Date || !isNaN(new Date(questionDoc.updatedAt).getTime())) ? new Date(questionDoc.updatedAt).toISOString() : validCreatedAt;
+    const validCreatedAt = questionDoc.createdAt && (questionDoc.createdAt instanceof Date || !isNaN(new Date(questionDoc.createdAt).getTime())) 
+                           ? new Date(questionDoc.createdAt).toISOString() 
+                           : new Date(0).toISOString();
+    const validUpdatedAt = questionDoc.updatedAt && (questionDoc.updatedAt instanceof Date || !isNaN(new Date(questionDoc.updatedAt).getTime())) 
+                           ? new Date(questionDoc.updatedAt).toISOString() 
+                           : validCreatedAt;
 
 
     return {
@@ -177,8 +189,11 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
       <Card className="shadow-lg">
         <CardHeader>
           <div className="flex justify-between items-start">
-            <CardTitle className="text-2xl md:text-3xl font-bold">{question.title}</CardTitle>
-            <VoteButtons initialUpvotes={question.upvotes} initialDownvotes={question.downvotes} itemId={question.id} itemType="question" />
+            <CardTitle className="text-2xl md:text-3xl font-bold flex-1_">{question.title}</CardTitle>
+            <div className="flex items-start space-x-2">
+                <QuestionActions questionAuthorId={question.author.id} questionId={question.id} />
+                <VoteButtons initialUpvotes={question.upvotes} initialDownvotes={question.downvotes} itemId={question.id} itemType="question" />
+            </div>
           </div>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground mt-2">
             <Avatar className="h-8 w-8">
@@ -212,7 +227,7 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
         </h2>
         {question.answers.length > 0 ? (
           question.answers.map((answer) => (
-            <AnswerCard key={answer.id} answer={answer} />
+            <AnswerCard key={answer.id} answer={answer} questionId={question.id} />
           ))
         ) : (
           <p className="text-muted-foreground">No answers yet. Be the first to provide a solution!</p>
@@ -223,7 +238,7 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
       <div id="your-answer-section">
         <h2 className="text-2xl font-semibold mb-4">Your Answer</h2>
-        <AnswerForm questionId={question.id} />
+        <AnswerForm questionId={question.id} questionAuthorId={question.author.id} />
       </div>
     </div>
   );

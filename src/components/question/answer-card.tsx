@@ -1,14 +1,17 @@
+
 import type { Answer } from '@/lib/types';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import VoteButtons from '@/components/shared/vote-buttons';
+import AnswerActions from '@/components/question/answer-actions'; // New component
 import { formatDistanceToNow } from 'date-fns';
 
 interface AnswerCardProps {
   answer: Answer;
+  questionId: string; // Needed for delete action context
 }
 
-export default function AnswerCard({ answer }: AnswerCardProps) {
+export default function AnswerCard({ answer, questionId }: AnswerCardProps) {
   const authorInitials = answer.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
   const timeAgo = formatDistanceToNow(new Date(answer.createdAt), { addSuffix: true });
 
@@ -34,8 +37,9 @@ export default function AnswerCard({ answer }: AnswerCardProps) {
           {answer.content}
         </div>
       </CardContent>
-      <CardFooter className="flex justify-start pt-3">
+      <CardFooter className="flex justify-between items-center pt-3">
         <VoteButtons initialUpvotes={answer.upvotes} initialDownvotes={answer.downvotes} itemId={answer.id} itemType="answer" />
+        <AnswerActions answerAuthorId={answer.author.id} answerId={answer.id} questionId={questionId} />
       </CardFooter>
     </Card>
   );

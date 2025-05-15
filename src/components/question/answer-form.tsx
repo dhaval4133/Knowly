@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, LogIn } from 'lucide-react';
+import { Loader2, LogIn, Info } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface AnswerFormProps {
   questionId: string;
+  questionAuthorId: string;
 }
 
 interface CurrentUser {
@@ -21,7 +22,7 @@ interface CurrentUser {
   userName: string;
 }
 
-export default function AnswerForm({ questionId }: AnswerFormProps) {
+export default function AnswerForm({ questionId, questionAuthorId }: AnswerFormProps) {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -67,6 +68,15 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
       return;
     }
 
+    if (currentUser.userId === questionAuthorId) {
+      toast({
+        title: "Cannot Answer Own Question",
+        description: "You cannot submit an answer to your own question.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!content.trim()) {
       toast({
         title: "Empty Answer",
@@ -92,14 +102,14 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
           description: data.message || "Your answer has been posted.",
         });
         setContent('');
-        router.refresh(); // Revalidate data on the current page to show the new answer
+        router.refresh(); 
       } else {
         toast({
-          title: "Submission Failed",
-          description: data.message || "Could not post your answer. Please log in if you haven't.",
+          title: data.message?.includes("own question") ? "Action Not Allowed" : "Submission Failed",
+          description: data.message || "Could not post your answer.",
           variant: "destructive",
         });
-         if (response.status === 401 && !data.success) { // Unauthorized
+         if (response.status === 401 && !data.success) { 
             router.push('/login');
         }
       }
@@ -150,6 +160,24 @@ export default function AnswerForm({ questionId }: AnswerFormProps) {
             </Link>
           </Button>
         </CardFooter>
+      </Card>
+    );
+  }
+
+  if (currentUser.userId === questionAuthorId) {
+    return (
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle className="text-xl flex items-center">
+            <Info className="mr-2 h-5 w-5 text-primary" />
+            Note
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            You cannot submit an answer to your own question. However, you can edit your question if you need to add more details or clarify something.
+          </p>
+        </CardContent>
       </Card>
     );
   }

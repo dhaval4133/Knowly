@@ -58,11 +58,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Unauthorized. Please log in to post an answer.' }, { status: 401 });
     }
 
-    const authorIdString = sessionIdCookie.value;
-    if (!ObjectId.isValid(authorIdString)) {
+    const loggedInUserIdString = sessionIdCookie.value;
+    if (!ObjectId.isValid(loggedInUserIdString)) {
         return NextResponse.json({ success: false, message: 'Invalid user session.' }, { status: 401 });
     }
-    const authorObjectId = new ObjectId(authorIdString);
+    const loggedInUserObjectId = new ObjectId(loggedInUserIdString);
 
     const { questionId, content } = await req.json();
 
@@ -77,24 +77,29 @@ export async function POST(req: NextRequest) {
     const questionsCollection = db.collection('questions');
     const usersCollection = db.collection('users');
 
-    // Verify author exists
-    const authorExists = await usersCollection.findOne({ _id: authorObjectId });
+    // Verify logged-in user exists
+    const authorExists = await usersCollection.findOne({ _id: loggedInUserObjectId });
     if (!authorExists) {
         return NextResponse.json({ success: false, message: 'Author not found.' }, { status: 404 });
     }
 
-    // Verify question exists
+    // Verify question exists and get its authorId
     const questionObjectId = new ObjectId(questionId);
     const questionExists = await questionsCollection.findOne({ _id: questionObjectId });
     if (!questionExists) {
         return NextResponse.json({ success: false, message: 'Question not found.' }, { status: 404 });
     }
 
+    // Prevent user from answering their own question
+    if (questionExists.authorId.toString() === loggedInUserIdString) {
+      return NextResponse.json({ success: false, message: 'You cannot answer your own question.' }, { status: 403 });
+    }
+
     const newAnswer: AnswerData = {
-      _id: new ObjectId().toString(), // Generate a new ObjectId string for the answer
+      _id: new ObjectId().toString(), 
       content,
-      authorId: authorIdString, // Store authorId as string
-      createdAt: new Date(), // Store as Date object
+      authorId: loggedInUserIdString, 
+      createdAt: new Date(), 
       upvotes: 0,
       downvotes: 0,
     };
@@ -103,7 +108,7 @@ export async function POST(req: NextRequest) {
       { _id: questionObjectId },
       {
         $push: { answers: newAnswer },
-        $set: { updatedAt: new Date() } // Update the question's updatedAt timestamp
+        $set: { updatedAt: new Date() } 
       }
     );
 
@@ -111,7 +116,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ 
         success: true, 
         message: 'Answer posted successfully!', 
-        answer: newAnswer // Optionally return the newly created answer
+        answer: newAnswer 
       }, { status: 201 });
     } else {
       console.error('Answer submission failed. Question not updated.');
