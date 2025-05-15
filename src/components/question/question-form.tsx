@@ -1,35 +1,38 @@
+
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card'; // Removed CardHeader, CardTitle
 import { Badge } from '@/components/ui/badge';
 import { X, Sparkles, Loader2 } from 'lucide-react';
-import { suggestTags, type SuggestTagsInput } from '@/ai/flows/suggest-tags'; // Ensure correct path
+import { suggestTags, type SuggestTagsInput } from '@/ai/flows/suggest-tags';
 import { useToast } from '@/hooks/use-toast';
 
 export default function QuestionForm() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [tagsInput, setTagsInput] = useState(''); // For user-typed tags before pressing enter/comma
+  const [tagsInput, setTagsInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   const handleAddTag = (tagValue: string) => {
-    const newTag = tagValue.trim();
+    const newTag = tagValue.trim().toLowerCase(); // Standardize tags to lowercase
     if (newTag && !tags.includes(newTag) && tags.length < 5) {
       setTags([...tags, newTag]);
     }
-    setTagsInput(''); // Clear input after adding
+    setTagsInput('');
   };
 
   const handleTagsInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    // Add tag on comma or enter
     if (value.endsWith(',') || value.endsWith(' ')) {
       handleAddTag(value.slice(0, -1));
     } else {
@@ -42,7 +45,7 @@ export default function QuestionForm() {
       e.preventDefault();
       handleAddTag(tagsInput);
     } else if (e.key === 'Backspace' && !tagsInput && tags.length > 0) {
-      setTags(tags.slice(0, -1)); // Remove last tag on backspace if input is empty
+      setTags(tags.slice(0, -1));
     }
   };
 
@@ -64,9 +67,10 @@ export default function QuestionForm() {
       const input: SuggestTagsInput = { title, description };
       const result = await suggestTags(input);
       if (result.tags && result.tags.length > 0) {
-        // Add new suggested tags, avoiding duplicates and respecting max limit
-        const newTags = result.tags.filter(suggestedTag => !tags.includes(suggestedTag));
-        setTags(prevTags => [...prevTags, ...newTags].slice(0, 5));
+        const newSuggestedTags = result.tags
+          .map(tag => tag.toLowerCase()) // Standardize suggested tags
+          .filter(suggestedTag => !tags.includes(suggestedTag));
+        setTags(prevTags => [...prevTags, ...newSuggestedTags].slice(0, 5));
         toast({
           title: "Tags Suggested!",
           description: "AI has suggested some tags for your question.",
@@ -89,7 +93,7 @@ export default function QuestionForm() {
     }
   };
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !description.trim() || tags.length === 0) {
       toast({
@@ -99,17 +103,48 @@ export default function QuestionForm() {
       });
       return;
     }
-    // Handle form submission logic (e.g., send data to backend)
-    console.log({ title, description, tags });
-    toast({
-      title: "Question Submitted!",
-      description: "Your question has been posted (mock submission).",
-    });
-    // Reset form (optional)
-    setTitle('');
-    setDescription('');
-    setTagsInput('');
-    setTags([]);
+    
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/questions/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title, description, tags }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.questionId) {
+        toast({
+          title: "Question Posted!",
+          description: data.message || "Your question has been successfully posted.",
+        });
+        setTitle('');
+        setDescription('');
+        setTagsInput('');
+        setTags([]);
+        // Redirect to the new question page or homepage
+        router.push(`/questions/${data.questionId}`); 
+        router.refresh(); // To ensure homepage and profile update if navigated to next
+      } else {
+        toast({
+          title: "Submission Failed",
+          description: data.message || "Could not post your question. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error submitting question:", error);
+      toast({
+        title: "Submission Error",
+        description: "An unexpected error occurred. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -156,9 +191,9 @@ export default function QuestionForm() {
                     size="icon"
                     className="h-4 w-4 ml-1 p-0"
                     onClick={() => handleRemoveTag(tag)}
+                    aria-label={`Remove tag ${tag}`}
                   >
                     <X size={12} />
-                    <span className="sr-only">Remove tag {tag}</span>
                   </Button>
                 </Badge>
               ))}
@@ -190,8 +225,8 @@ export default function QuestionForm() {
           </div>
         </CardContent>
         <CardFooter>
-          <Button type="submit" size="lg" className="w-full md:w-auto" disabled={!title || !description || tags.length === 0}>
-            Post Your Question
+          <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSubmitting || !title || !description || tags.length === 0}>
+            {isSubmitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Posting...</>) : 'Post Your Question'}
           </Button>
         </CardFooter>
       </form>

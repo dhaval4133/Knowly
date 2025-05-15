@@ -1,4 +1,5 @@
-import type { User, Tag, Question, Answer } from './types';
+
+import type { User, Tag } from './types'; // Question and Answer types are now more DB-aligned
 
 export const mockUsers: User[] = [
   { id: 'user1', name: 'Alice Wonderland', avatarUrl: 'https://placehold.co/100x100.png' },
@@ -7,14 +8,19 @@ export const mockUsers: User[] = [
 ];
 
 export const mockTags: Tag[] = [
-  { id: 'tag1', name: 'JavaScript' },
-  { id: 'tag2', name: 'React' },
-  { id: 'tag3', name: 'Next.js' },
-  { id: 'tag4', name: 'TypeScript' },
-  { id: 'tag5', name: 'AI' },
+  { id: 'javascript', name: 'JavaScript' }, // id matching string tag name
+  { id: 'react', name: 'React' },
+  { id: 'next.js', name: 'Next.js' },
+  { id: 'typescript', name: 'TypeScript' },
+  { id: 'ai', name: 'AI' },
 ];
 
-const mockAnswers: Answer[] = [
+// The following mock data for questions and answers is now superseded by database fetching.
+// It's kept here for reference or if needed for other isolated testing, but not used by
+// the main pages (homepage, question detail, profile).
+
+/*
+export const mockAnswers: Answer[] = [
   {
     id: 'ans1',
     content: 'You can use `useEffect` for side effects in React components. Make sure to include a dependency array!',
@@ -77,3 +83,4 @@ export const getAnswersForQuestion = (questionId: string): Answer[] => {
   const question = getQuestionById(questionId);
   return question ? question.answers : [];
 };
+*/
