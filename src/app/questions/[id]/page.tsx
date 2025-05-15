@@ -86,7 +86,7 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
       { _id: questionObjectId },
       { $inc: { views: 1 } }
     );
-    const currentViews = questionDoc.views + 1; 
+    const currentViews = (questionDoc.views || 0) + 1; 
 
     const authorIdsToFetch = new Set<ObjectId>();
     authorIdsToFetch.add(questionDoc.authorId);
@@ -118,14 +118,15 @@ async function fetchQuestionById(id: string): Promise<PopulatedQuestion | null> 
         id: ansId, 
         content: ans.content,
         author: answerAuthor,
-        createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+        createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
         upvotes: ans.upvotes,
         downvotes: ans.downvotes,
       };
     });
     
-    const validCreatedAt = questionDoc.createdAt ? new Date(questionDoc.createdAt).toISOString() : new Date(0).toISOString();
-    const validUpdatedAt = questionDoc.updatedAt ? new Date(questionDoc.updatedAt).toISOString() : validCreatedAt;
+    const validCreatedAt = questionDoc.createdAt && (questionDoc.createdAt instanceof Date || !isNaN(new Date(questionDoc.createdAt).getTime())) ? new Date(questionDoc.createdAt).toISOString() : new Date(0).toISOString();
+    const validUpdatedAt = questionDoc.updatedAt && (questionDoc.updatedAt instanceof Date || !isNaN(new Date(questionDoc.updatedAt).getTime())) ? new Date(questionDoc.updatedAt).toISOString() : validCreatedAt;
+
 
     return {
       id: questionDoc._id.toString(),
@@ -220,7 +221,7 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
       <Separator />
 
-      <div>
+      <div id="your-answer-section">
         <h2 className="text-2xl font-semibold mb-4">Your Answer</h2>
         <AnswerForm questionId={question.id} />
       </div>

@@ -5,7 +5,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import TagBadge from '@/components/shared/tag-badge';
 import VoteButtons from '@/components/shared/vote-buttons';
-import { MessageCircle, Eye } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MessageCircle, Eye, ArrowRight, Reply } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface QuestionCardProps {
@@ -14,7 +15,6 @@ interface QuestionCardProps {
 
 export default function QuestionCard({ question }: QuestionCardProps) {
   const initials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
-  // Display updatedAt if different from createdAt, otherwise createdAt
   const timeAgo = formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true });
   const activityText = question.createdAt === question.updatedAt 
     ? `asked ${formatDistanceToNow(new Date(question.createdAt), { addSuffix: true })}` 
@@ -50,7 +50,7 @@ export default function QuestionCard({ question }: QuestionCardProps) {
           ))}
         </div>
       </CardContent>
-      <CardFooter className="text-sm text-muted-foreground flex justify-between items-center">
+      <CardFooter className="text-sm text-muted-foreground flex flex-col sm:flex-row justify-between items-center gap-4 pt-4">
         <div className="flex items-center space-x-4">
           <span className="flex items-center">
             <MessageCircle size={16} className="mr-1" /> {question.answers.length} Answer{question.answers.length !== 1 ? 's' : ''}
@@ -59,9 +59,18 @@ export default function QuestionCard({ question }: QuestionCardProps) {
             <Eye size={16} className="mr-1" /> {question.views} View{question.views !== 1 ? 's' : ''}
           </span>
         </div>
-        <Link href={`/questions/${question.id}`} className="text-primary hover:underline">
-          View Question &rarr;
-        </Link>
+        <div className="flex items-center space-x-2">
+          <Button asChild variant="default" size="sm">
+            <Link href={`/questions/${question.id}#your-answer-section`}>
+              <Reply className="mr-2 h-4 w-4" /> Answer
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/questions/${question.id}`}>
+              View Question <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </CardFooter>
     </Card>
   );
