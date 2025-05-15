@@ -3,12 +3,12 @@
 
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation'; // Import useRouter
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-// import { useRouter } from 'next/navigation'; // Uncomment if you want to redirect
 
 export default function RegisterForm() {
   const [name, setName] = useState('');
@@ -17,7 +17,7 @@ export default function RegisterForm() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  // const router = useRouter(); // Uncomment if you want to redirect
+  const router = useRouter(); // Initialize useRouter
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,10 +45,9 @@ export default function RegisterForm() {
       if (response.ok && data.success) {
         toast({
           title: 'Registration Successful',
-          description: data.message || 'Your account has been created!',
+          description: data.message || 'Your account has been created! Please log in.',
         });
-        // Optionally, redirect to login or home
-        // router.push('/login');
+        router.push('/login'); // Redirect to login page
       } else {
         toast({
           title: 'Registration Failed',
