@@ -2,8 +2,16 @@
 'use server';
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { MongoClient, Db, ObjectId } from 'mongodb';
+import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import { cookies } from 'next/headers';
+
+interface UserDBDocument extends WithId<Document> {
+  _id: ObjectId;
+  name: string;
+  email?: string; // Assuming email might not always be projected
+  avatarUrl?: string;
+  activeSessionToken?: string; // Added for single session validation
+}
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
@@ -49,30 +57,53 @@ async function connectToDatabase() {
   return cachedDb;
 }
 
+function clearAuthCookies() {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: -1, // Expire immediately
+    path: '/',
+    sameSite: 'lax' as 'lax' | 'strict' | 'none' | undefined,
+  };
+  cookies().set('knowly-session-id', '', cookieOptions);
+  cookies().set('knowly-active-token', '', cookieOptions);
+}
+
 export async function GET(req: NextRequest) {
   try {
     const cookieStore = cookies();
-    const sessionIdCookie = cookieStore.get('knowly-session-id');
+    const userIdCookie = cookieStore.get('knowly-session-id');
+    const activeTokenCookie = cookieStore.get('knowly-active-token');
 
-    if (!sessionIdCookie || !sessionIdCookie.value) {
-      return NextResponse.json({ success: false, user: null, message: 'Not authenticated.' }, { status: 401 });
+    if (!userIdCookie || !userIdCookie.value || !activeTokenCookie || !activeTokenCookie.value) {
+      // If essential cookies are missing, clear any partial ones and treat as unauthenticated
+      if (userIdCookie?.value || activeTokenCookie?.value) clearAuthCookies();
+      return NextResponse.json({ success: false, user: null, message: 'Not authenticated. Missing session cookies.' }, { status: 401 });
     }
 
-    const userId = sessionIdCookie.value;
+    const userId = userIdCookie.value;
+    const sessionTokenFromCookie = activeTokenCookie.value;
 
     if (!ObjectId.isValid(userId)) {
-        cookies().set('knowly-session-id', '', { maxAge: -1, path: '/' });
-        return NextResponse.json({ success: false, user: null, message: 'Invalid session identifier.' }, { status: 401 });
+        clearAuthCookies();
+        return NextResponse.json({ success: false, user: null, message: 'Invalid user session identifier.' }, { status: 401 });
     }
 
     const db = await connectToDatabase();
-    const usersCollection = db.collection('users');
+    const usersCollection = db.collection<UserDBDocument>('users');
 
     const user = await usersCollection.findOne({ _id: new ObjectId(userId) }, { projection: { password: 0 } }); 
 
     if (!user) {
-      cookies().set('knowly-session-id', '', { maxAge: -1, path: '/' });
-      return NextResponse.json({ success: false, user: null, message: 'User not found or session invalid.' }, { status: 401 });
+      clearAuthCookies();
+      return NextResponse.json({ success: false, user: null, message: 'User not found or session invalid (user missing).' }, { status: 401 });
+    }
+
+    // Validate the active session token
+    if (user.activeSessionToken !== sessionTokenFromCookie) {
+      clearAuthCookies(); // Invalidate this device's session
+      console.log(`Stale session for user ${userId}. Cookie token: ${sessionTokenFromCookie}, DB token: ${user.activeSessionToken}`);
+      return NextResponse.json({ success: false, user: null, message: 'Session expired or logged out from another device.' }, { status: 401 });
     }
 
     return NextResponse.json({ 
@@ -80,7 +111,7 @@ export async function GET(req: NextRequest) {
         user: { 
             userId: user._id.toString(), 
             userName: user.name,
-            avatarUrl: user.avatarUrl // Include avatarUrl
+            avatarUrl: user.avatarUrl 
         } 
     }, { status: 200 });
 
@@ -101,6 +132,7 @@ export async function GET(req: NextRequest) {
         errorStatus = 503;
       }
     }
+    // In case of server-side error, don't clear cookies here, let client retry or user log out manually.
     return NextResponse.json({ success: false, user:null, message: errorMessage }, { status: errorStatus });
   }
 }

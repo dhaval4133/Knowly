@@ -23,12 +23,10 @@ let cachedDb: Db | null = null;
 async function connectToDatabase() {
   if (cachedClient && cachedDb) {
     try {
-      // Ping the database to ensure the connection is still alive
       await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
-      // console.log('Using cached database instance for login.');
       return cachedDb;
     } catch (e) {
-      console.warn('Cached MongoDB connection lost, attempting to reconnect...', e);
+      console.warn('Cached MongoDB connection lost for login, attempting to reconnect...', e);
       cachedClient = null;
       cachedDb = null;
     }
@@ -47,7 +45,7 @@ async function connectToDatabase() {
       console.log('MongoDB connected successfully for login.');
     } catch (err) {
       console.error('Failed to connect to MongoDB for login:', err);
-      cachedClient = null; // Reset client on connection failure
+      cachedClient = null; 
       throw err;
     }
   }
@@ -94,16 +92,28 @@ export async function POST(req: NextRequest) {
     
     const userId = user._id.toString();
     const userName = user.name as string;
-    console.log('Login successful for email:', email, 'User ID:', userId);
+    
+    // Generate a new active session token
+    const activeSessionToken = new ObjectId().toString();
 
-    // Set HttpOnly cookie for session management
-    cookies().set('knowly-session-id', userId, {
+    // Update the user's document with the new active session token
+    await usersCollection.updateOne(
+      { _id: user._id },
+      { $set: { activeSessionToken: activeSessionToken, updatedAt: new Date() } } // Also update updatedAt
+    );
+    
+    console.log('Login successful for email:', email, 'User ID:', userId, 'Active Session Token:', activeSessionToken);
+
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       maxAge: 60 * 60 * 24 * 30, // 30 days
       path: '/',
-      sameSite: 'lax', // or 'strict'
-    });
+      sameSite: 'lax' as 'lax' | 'strict' | 'none' | undefined,
+    };
+
+    cookies().set('knowly-session-id', userId, cookieOptions);
+    cookies().set('knowly-active-token', activeSessionToken, cookieOptions);
     
     return NextResponse.json({ 
         success: true, 
@@ -120,7 +130,7 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error) {
       if (error.message.includes('ECONNREFUSED')) {
         errorMessage = 'Failed to connect to the database. Please check your connection string and ensure the database server is running.';
-        errorStatus = 503; // Service Unavailable
+        errorStatus = 503; 
       } else if (error.message.includes('querySrv ESERVFAIL') || error.message.includes('queryTxt ESERVFAIL')) {
         errorMessage = 'Database connection failed: DNS resolution error. Check your MongoDB URI and network settings.';
         errorStatus = 503;
