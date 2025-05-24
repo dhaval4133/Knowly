@@ -8,7 +8,6 @@ import { ThemeToggleButton } from '@/components/theme-toggle-button';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-// Logo import removed
 
 interface CurrentUser {
   userId: string;
@@ -40,15 +39,13 @@ export default function Header() {
       } catch (error) {
         console.error("Error fetching user session:", error);
         setCurrentUser(null);
-        // Optionally, show a toast if session check fails critically
-        // toast({ title: "Session Check Failed", description: "Could not verify your session.", variant: "destructive" });
       } finally {
         setIsLoadingUser(false);
       }
     };
 
     fetchUserSession();
-  }, [pathname]); // Re-check on path change, or consider removing pathname if not strictly needed for re-fetch
+  }, [pathname]); 
 
   const handleLogout = async () => {
     try {
@@ -75,34 +72,21 @@ export default function Header() {
         variant: 'destructive',
       });
     } finally {
-      setCurrentUser(null); // Optimistically update UI
+      setCurrentUser(null); 
       router.push('/login');
-      // router.refresh(); // May not be needed if pathname dependency in useEffect handles it
     }
   };
   
-  // Optional: Show a loading state for the header or buttons while fetching user
-  // if (isLoadingUser) {
-  //   return (
-  //     <header className="bg-card border-b border-border shadow-sm sticky top-0 z-40">
-  //       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-  //         <Link href="/" className="text-2xl font-bold text-primary hover:text-accent transition-colors">
-  //           Knowly
-  //         </Link>
-  //         <div className="flex items-center space-x-2">
-  //           <span className="text-sm text-muted-foreground">Loading...</span>
-  //           <ThemeToggleButton />
-  //         </div>
-  //       </div>
-  //     </header>
-  //   );
-  // }
-
   return (
     <header className="bg-card border-b border-border shadow-sm sticky top-0 z-40">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-        <Link href="/" className="text-2xl font-bold text-primary hover:text-accent transition-colors" aria-label="Knowly Homepage">
-          Knowly
+        <Link href="/" className="flex flex-col group" aria-label="Knowly Homepage">
+          <span className="text-2xl font-bold text-primary group-hover:text-accent transition-colors">
+            Knowly
+          </span>
+          <span className="text-xs text-muted-foreground group-hover:text-accent transition-colors -mt-1">
+            Ask. Answer. Achieve.
+          </span>
         </Link>
         <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-3">
           <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3">
@@ -112,7 +96,7 @@ export default function Header() {
             </Link>
           </Button>
           
-          {(currentUser || !isLoadingUser) && ( // Show "Ask Question" if user is loaded (either logged in or not)
+          {(currentUser || !isLoadingUser) && ( 
              <Button variant="default" size="sm" asChild className="px-2 sm:px-3">
                 <Link href="/ask" className="flex items-center space-x-1 sm:space-x-2">
                   <MessageSquarePlus size={18} />
@@ -149,7 +133,7 @@ export default function Header() {
                 </Link>
               </Button>
             </div>
-          ) : null /* Or a loading spinner/placeholder for auth buttons */}
+          ) : null }
           <ThemeToggleButton />
         </div>
       </div>
