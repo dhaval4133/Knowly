@@ -5,48 +5,59 @@ export default function Logo() {
   return (
     <svg
       aria-label="Knowly: Ask. Answer. Achieve."
-      // You can adjust the h- class to control the logo's height.
-      // The w-auto will make the width scale proportionally.
-      className="h-10 w-auto" 
-      viewBox="0 0 80 38" // Adjusted viewBox for the new graphic
+      className="h-10 w-auto" // You can adjust height
+      viewBox="0 0 150 40" // Adjusted viewBox to accommodate name and graphic
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       <style>
         {`
           .logo-graphic-main { fill: hsl(var(--primary)); }
+          .logo-text-knowly { 
+            font-family: var(--font-geist-sans, Arial, sans-serif); 
+            font-size: 20px; 
+            font-weight: 600;
+            fill: hsl(var(--primary)); 
+            dominant-baseline: central;
+            text-anchor: start;
+          }
           .slogan-text { 
             font-family: var(--font-geist-sans, Arial, sans-serif); 
-            font-size: 9px; 
+            font-size: 7px; 
             fill: hsl(var(--muted-foreground)); 
-            text-anchor: middle; /* Center the slogan text */
+            dominant-baseline: central;
+            text-anchor: start;
           }
         `}
       </style>
       
-      {/* Graphic part, translated to center it and provide top margin */}
-      <g transform="translate(25, 2)"> 
-        {/* Bar 1 (representing Ask) */}
-        <rect x="0" y="12" width="30" height="4" rx="2" className="logo-graphic-main" />
-        {/* Bar 2 (representing Answer) */}
-        <rect x="0" y="18" width="30" height="4" rx="2" className="logo-graphic-main" />
-        {/* Checkmark (representing Achieve) */}
-        {/* Path: M startX,startY L cornerX,cornerY L endX,endY */}
-        {/* This checkmark is 16 units wide (18-2) and 10 units high (13-3). */}
-        {/* It's translated to be centered above the bars. translate(horizontal-center-offset, vertical-lift) */}
+      {/* Graphic Part - two bars and a checkmark */}
+      {/* Positioned to the left of the text */}
+      <g transform="translate(5, 10)"> 
+        {/* Bar 1 */}
+        <rect x="0" y="8" width="20" height="3" rx="1.5" className="logo-graphic-main" />
+        {/* Bar 2 */}
+        <rect x="0" y="13" width="20" height="3" rx="1.5" className="logo-graphic-main" />
+        {/* Checkmark */}
         <path 
-          d="M2 8 L8 13 L18 3" 
+          d="M1 5 L5 9 L11 2" 
           stroke="hsl(var(--primary))" 
-          strokeWidth="2.5"  // Changed stroke-width to strokeWidth for React/JSX
-          strokeLinecap="round" // Changed stroke-linecap to strokeLinecap
-          strokeLinejoin="round" // Changed stroke-linejoin to strokeLinejoin
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
           fill="none" 
-          transform="translate(7, -5)"
+          transform="translate(4.5, -2)" 
         />
       </g>
       
-      {/* Slogan "Ask. Answer. Achieve." centered horizontally */}
-      <text x="40" y="33" className="slogan-text">
+      {/* Text "Knowly" */}
+      {/* Positioned to the right of the graphic */}
+      <text x="35" y="15" className="logo-text-knowly">
+        Knowly
+      </text>
+      
+      {/* Slogan "Ask. Answer. Achieve." below "Knowly" */}
+      <text x="35" y="28" className="slogan-text">
         Ask. Answer. Achieve.
       </text>
     </svg>
