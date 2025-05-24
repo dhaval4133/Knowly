@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Edit, Camera } from 'lucide-react';
 import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { ProfileData, UserAnswerEntry } from '@/app/profile/[userId]/page';
+import type { ProfileData, UserAnswerEntry, PlainProfileUser } from '@/app/profile/[userId]/page';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -75,6 +75,21 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   }, []);
   
   const { fetchedUser, userQuestions, userAnswers } = profileData;
+
+  if (!fetchedUser) {
+    // This case should ideally be handled by the parent Server Component with notFound()
+    // But as a fallback for client-side robustness if props are somehow null.
+    return (
+        <div className="text-center py-12">
+            <h1 className="text-2xl font-semibold">User Not Found</h1>
+            <p className="text-muted-foreground">The profile you are looking for does not exist.</p>
+            <Button asChild className="mt-4">
+                <Link href="/">Go to Homepage</Link>
+            </Button>
+        </div>
+    );
+  }
+
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -156,7 +171,9 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   };
 
   const initials = displayUser.name.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
-  const memberSince = fetchedUser.createdAt ? new Date(fetchedUser.createdAt).toLocaleDateString() : 'N/A';
+  const joinedDate = fetchedUser.createdAt 
+    ? new Date(fetchedUser.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) 
+    : 'N/A';
 
   return (
     <div className="space-y-8">
@@ -222,7 +239,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
           </AlertDialog>
 
           <CardTitle className="text-3xl font-bold mt-4">{displayUser.name}</CardTitle>
-          <p className="text-muted-foreground">Member since {memberSince}</p>
+          <p className="text-muted-foreground">Joined Knowly on {joinedDate}</p>
           <p className="mt-2 max-w-md text-foreground/80">
             Passionate learner and contributor at Knowly. Always eager to help and explore new ideas.
           </p>
@@ -283,4 +300,3 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     </div>
   );
 }
-
