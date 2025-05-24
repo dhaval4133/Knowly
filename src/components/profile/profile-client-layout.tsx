@@ -50,19 +50,8 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     fetchUserSession();
   }, []);
 
-  if (!profileData.fetchedUser) {
-    // This case should be handled by the Server Component with notFound(),
-    // but as a fallback in client layout:
-    return (
-      <div className="text-center py-12">
-        <h1 className="text-2xl font-semibold text-destructive">User Not Found</h1>
-        <p className="text-muted-foreground mt-2">The profile you are looking for does not exist.</p>
-        <Button asChild className="mt-4">
-          <Link href="/">Go to Homepage</Link>
-        </Button>
-      </div>
-    );
-  }
+  // The parent Server Component (ProfilePage) handles the case where profileData.fetchedUser is null
+  // by calling notFound(). So, if this component renders, profileData.fetchedUser is guaranteed to be non-null.
   
   const { fetchedUser, userQuestions, userAnswers } = profileData;
 
@@ -80,10 +69,11 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     );
   }
 
-  const isOwnProfile = currentUser?.userId === fetchedUser._id.toString();
+  // fetchedUser is guaranteed by ProfilePage not to be null here
+  const isOwnProfile = currentUser?.userId === fetchedUser._id;
 
   const displayUser: UserType = {
-    id: fetchedUser._id.toString(),
+    id: fetchedUser._id, // PlainProfileUser._id is already a string
     name: fetchedUser.name,
     avatarUrl: fetchedUser.avatarUrl || `https://placehold.co/128x128.png?text=${fetchedUser.name[0]?.toUpperCase() || 'U'}`,
   };
