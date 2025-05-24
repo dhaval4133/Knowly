@@ -5,7 +5,18 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// import { useRouter } from 'next/navigation'; // For future delete/edit navigation
+import { useRouter } from 'next/navigation';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface CurrentUser {
   userId: string;
@@ -20,8 +31,9 @@ interface QuestionActionsProps {
 export default function QuestionActions({ questionAuthorId, questionId }: QuestionActionsProps) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
-  // const router = useRouter(); // For future delete/edit navigation
+  const router = useRouter();
 
   useEffect(() => {
     const fetchUserSession = async () => {
@@ -49,26 +61,45 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
   }, []);
 
   const handleEdit = () => {
-    // Placeholder for edit functionality
+    // Placeholder for edit functionality for now
     // router.push(`/questions/${questionId}/edit`);
     toast({ title: "Edit Clicked (Not Implemented)", description: "Editing this question is not yet implemented." });
   };
 
-  const handleDelete = async () => {
-    // Placeholder for delete functionality
-    // Add confirmation dialog here
-    // const confirmed = confirm("Are you sure you want to delete this question?");
-    // if (confirmed) {
-    //   try {
-    //     // Call delete API
-    //     toast({ title: "Question Deleted (Not Implemented)", description: "This question would be deleted." });
-    //     // router.push('/'); // Or to another appropriate page
-    //     // router.refresh();
-    //   } catch (error) {
-    //     toast({ title: "Error Deleting Question", variant: "destructive" });
-    //   }
-    // }
-    toast({ title: "Delete Clicked (Not Implemented)", description: "Deleting this question is not yet implemented." });
+  const handleDeleteQuestion = async () => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch('/api/questions/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId }),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: "Question Deleted",
+          description: data.message || "The question has been successfully deleted.",
+        });
+        router.push('/'); // Redirect to homepage
+        router.refresh(); // Ensure data is refreshed on subsequent navigation
+      } else {
+        toast({
+          title: "Error Deleting Question",
+          description: data.message || "Could not delete the question. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting question:", error);
+      toast({
+        title: "Deletion Error",
+        description: "An unexpected error occurred while deleting the question.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (isLoadingUser) {
@@ -82,10 +113,28 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
           <Pencil className="h-4 w-4 mr-1 sm:mr-2" />
           <span className="hidden sm:inline">Edit</span>
         </Button>
-        <Button variant="destructive" size="sm" onClick={handleDelete} aria-label="Delete question">
-          <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
-          <span className="hidden sm:inline">Delete</span>
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" aria-label="Delete question">
+              <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete this question and all its answers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteQuestion} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+                {isDeleting ? "Deleting..." : "Yes, delete question"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }

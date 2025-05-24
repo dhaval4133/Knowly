@@ -7,7 +7,7 @@ import { Search, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { MongoClient, Db, ObjectId, WithId, Filter } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
-import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
+// import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
 
 // Define a more specific type for Question documents from MongoDB
 interface QuestionDBDocument extends QuestionData { // Inherits fields from QuestionData
@@ -177,7 +177,7 @@ export default async function Home({ searchParams }: HomePageProps) {
 
   return (
     <div className="space-y-8">
-      <RealtimeUpdateTrigger intervalMs={15000} />
+      {/* <RealtimeUpdateTrigger intervalMs={15000} /> */}
       <div className="text-center">
         <h1 className="text-4xl font-bold text-primary mb-2">Welcome to Knowly</h1>
         <p className="text-lg text-muted-foreground">
@@ -231,7 +231,7 @@ export default async function Home({ searchParams }: HomePageProps) {
           </h2>
           <p className="text-muted-foreground">
             {searchTerm ? 'Try a different search term or ' : 'Be the first to '}
-            <a href="/ask" className="text-primary hover:underline">ask a question</a>
+            <Link href="/ask" className="text-primary hover:underline">ask a question</Link>
             {searchTerm ? '.' : ' and spark a discussion.'}
           </p>
         </div>

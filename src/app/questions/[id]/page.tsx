@@ -7,12 +7,12 @@ import TagBadge from '@/components/shared/tag-badge';
 import VoteButtons from '@/components/shared/vote-buttons';
 import AnswerCard from '@/components/question/answer-card';
 import AnswerForm from '@/components/question/answer-form';
-import QuestionActions from '@/components/question/question-actions'; // New component
+import QuestionActions from '@/components/question/question-actions';
 import { Separator } from '@/components/ui/separator';
 import { formatDistanceToNow } from 'date-fns';
 import { MongoClient, Db, ObjectId, WithId } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
-import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
+// import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger'; // Temporarily removed
 
 interface QuestionPageProps {
   params: { id: string };
@@ -185,7 +185,7 @@ export default async function QuestionPage({ params }: QuestionPageProps) {
 
   return (
     <div className="space-y-8">
-      <RealtimeUpdateTrigger intervalMs={15000} />
+      {/* <RealtimeUpdateTrigger intervalMs={15000} /> Temporarily removed */}
       <Card className="shadow-lg">
         <CardHeader>
           <div className="flex justify-between items-start">

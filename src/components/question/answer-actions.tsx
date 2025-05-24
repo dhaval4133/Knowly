@@ -5,7 +5,18 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// import { useRouter } from 'next/navigation'; // For future delete navigation
+import { useRouter } from 'next/navigation';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface CurrentUser {
   userId: string;
@@ -21,8 +32,9 @@ interface AnswerActionsProps {
 export default function AnswerActions({ answerAuthorId, answerId, questionId }: AnswerActionsProps) {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
-  // const router = useRouter(); // For future delete navigation
+  const router = useRouter();
 
   useEffect(() => {
     const fetchUserSession = async () => {
@@ -49,20 +61,39 @@ export default function AnswerActions({ answerAuthorId, answerId, questionId }: 
     fetchUserSession();
   }, []);
 
-  const handleDelete = async () => {
-    // Placeholder for delete functionality
-    // Add confirmation dialog here
-    // const confirmed = confirm("Are you sure you want to delete this answer?");
-    // if (confirmed) {
-    //   try {
-    //     // Call delete API: fetch(`/api/answers/delete`, { method: 'POST', body: JSON.stringify({ questionId, answerId })})
-    //     toast({ title: "Answer Deleted (Not Implemented)", description: "This answer would be deleted." });
-    //     // router.refresh();
-    //   } catch (error) {
-    //     toast({ title: "Error Deleting Answer", variant: "destructive" });
-    //   }
-    // }
-    toast({ title: "Delete Answer Clicked (Not Implemented)", description: "Deleting this answer is not yet implemented." });
+  const handleDeleteAnswer = async () => {
+    setIsDeleting(true);
+    try {
+      const response = await fetch('/api/answers/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ questionId, answerId }),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast({
+          title: "Answer Deleted",
+          description: data.message || "The answer has been successfully deleted.",
+        });
+        router.refresh(); // Refresh the page to reflect the deletion
+      } else {
+        toast({
+          title: "Error Deleting Answer",
+          description: data.message || "Could not delete the answer. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting answer:", error);
+      toast({
+        title: "Deletion Error",
+        description: "An unexpected error occurred while deleting the answer.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   if (isLoadingUser) {
@@ -71,10 +102,28 @@ export default function AnswerActions({ answerAuthorId, answerId, questionId }: 
 
   if (currentUser && currentUser.userId === answerAuthorId) {
     return (
-      <Button variant="ghost" size="sm" onClick={handleDelete} className="text-muted-foreground hover:text-destructive" aria-label="Delete answer">
-        <Trash2 className="h-4 w-4 mr-1" />
-        Delete
-      </Button>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" aria-label="Delete answer">
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete this answer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteAnswer} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              {isDeleting ? "Deleting..." : "Yes, delete answer"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     );
   }
 
