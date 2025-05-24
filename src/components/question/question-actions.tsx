@@ -61,9 +61,7 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
   }, []);
 
   const handleEdit = () => {
-    // Placeholder for edit functionality for now
-    // router.push(`/questions/${questionId}/edit`);
-    toast({ title: "Edit Clicked (Not Implemented)", description: "Editing this question is not yet implemented." });
+    router.push(`/questions/${questionId}/edit`);
   };
 
   const handleDeleteQuestion = async () => {
@@ -81,8 +79,8 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
           title: "Question Deleted",
           description: data.message || "The question has been successfully deleted.",
         });
-        router.push('/'); // Redirect to homepage
-        router.refresh(); // Ensure data is refreshed on subsequent navigation
+        router.push('/'); 
+        router.refresh(); 
       } else {
         toast({
           title: "Error Deleting Question",
@@ -103,7 +101,7 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
   };
 
   if (isLoadingUser) {
-    return null; // Or a small loader
+    return null; 
   }
 
   if (currentUser && currentUser.userId === questionAuthorId) {
