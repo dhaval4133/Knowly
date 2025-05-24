@@ -3,7 +3,8 @@ import type { Question as PopulatedQuestion, User as UserType } from '@/lib/type
 import QuestionCard from '@/components/question/question-card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, AlertTriangle } from 'lucide-react';
+import { Search, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
+import Link from 'next/link';
 import { MongoClient, Db, ObjectId, WithId, Filter } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
 import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
@@ -29,6 +30,7 @@ interface UserDBDocument extends WithId<Document> {
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
+const QUESTIONS_PER_PAGE = 10; // Number of questions per page
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -60,7 +62,14 @@ async function connectToDatabase() {
   return cachedDb;
 }
 
-async function getAllQuestions(searchTerm?: string): Promise<PopulatedQuestion[]> {
+interface FetchQuestionsResult {
+  questions: PopulatedQuestion[];
+  totalQuestions: number;
+  currentPage: number;
+  totalPages: number;
+}
+
+async function getAllQuestions(searchTerm?: string, page: number = 1): Promise<FetchQuestionsResult> {
   try {
     const db = await connectToDatabase();
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
@@ -76,8 +85,16 @@ async function getAllQuestions(searchTerm?: string): Promise<PopulatedQuestion[]
       ];
     }
 
+    const totalQuestions = await questionsCollection.countDocuments(query);
+    const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
+    const skipAmount = (page - 1) * QUESTIONS_PER_PAGE;
+
     // Sort by updatedAt descending for most recent activity
-    const questionDocs = await questionsCollection.find(query).sort({ updatedAt: -1 }).toArray();
+    const questionDocs = await questionsCollection.find(query)
+      .sort({ updatedAt: -1 })
+      .skip(skipAmount)
+      .limit(QUESTIONS_PER_PAGE)
+      .toArray();
     
     const questionAuthorIds = new Set<ObjectId>();
     questionDocs.forEach(qDoc => {
@@ -136,22 +153,27 @@ async function getAllQuestions(searchTerm?: string): Promise<PopulatedQuestion[]
       };
     });
 
-    return populatedQuestions;
+    return { questions: populatedQuestions, totalQuestions, currentPage: page, totalPages };
   } catch (error) {
     console.error('Error fetching questions for homepage:', error);
-    return []; 
+    return { questions: [], totalQuestions: 0, currentPage: 1, totalPages: 0 }; 
   }
 }
 
 interface HomePageProps {
   searchParams?: {
     search?: string;
+    page?: string;
   };
 }
 
 export default async function Home({ searchParams }: HomePageProps) {
   const searchTerm = searchParams?.search;
-  const questions = await getAllQuestions(searchTerm);
+  const currentPage = parseInt(searchParams?.page || '1', 10);
+  const { questions, totalQuestions, totalPages } = await getAllQuestions(searchTerm, currentPage);
+
+  const hasPreviousPage = currentPage > 1;
+  const hasNextPage = currentPage < totalPages;
 
   return (
     <div className="space-y-8">
@@ -212,6 +234,36 @@ export default async function Home({ searchParams }: HomePageProps) {
             <a href="/ask" className="text-primary hover:underline">ask a question</a>
             {searchTerm ? '.' : ' and spark a discussion.'}
           </p>
+        </div>
+      )}
+
+      {totalQuestions > 0 && MONGODB_URI && MONGODB_DB_NAME && (
+        <div className="flex justify-center items-center space-x-4 mt-12">
+          {hasPreviousPage ? (
+            <Button asChild variant="outline">
+              <Link href={`/?${searchTerm ? `search=${encodeURIComponent(searchTerm)}&` : ''}page=${currentPage - 1}`}>
+                <ArrowLeft className="mr-2 h-4 w-4" /> Previous
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" disabled>
+              <ArrowLeft className="mr-2 h-4 w-4" /> Previous
+            </Button>
+          )}
+          <span className="text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          {hasNextPage ? (
+            <Button asChild variant="outline">
+              <Link href={`/?${searchTerm ? `search=${encodeURIComponent(searchTerm)}&` : ''}page=${currentPage + 1}`}>
+                Next <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          ) : (
+            <Button variant="outline" disabled>
+               Next <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )}
         </div>
       )}
     </div>
