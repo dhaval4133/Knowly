@@ -64,16 +64,19 @@ export async function POST(req: NextRequest) {
     }
     const loggedInUserObjectId = new ObjectId(loggedInUserIdString);
 
-    const { avatarUrl } = await req.json();
+    const { avatarUrl } = await req.json(); // This will now be a Data URI string
 
-    if (typeof avatarUrl !== 'string') {
-      return NextResponse.json({ success: false, message: 'Avatar URL must be a string.' }, { status: 400 });
+    if (typeof avatarUrl !== 'string' || !avatarUrl.startsWith('data:image/')) {
+      return NextResponse.json({ success: false, message: 'Avatar URL must be a valid Data URI string for an image.' }, { status: 400 });
     }
-    // Basic URL validation (can be more sophisticated)
-    try {
-      new URL(avatarUrl);
-    } catch (_) {
-      return NextResponse.json({ success: false, message: 'Invalid Avatar URL format.' }, { status: 400 });
+    
+    // Basic check for excessively large Data URIs (e.g., > 5MB)
+    // MongoDB has a 16MB limit per document, but embedding large images is inefficient.
+    // This is a soft limit; adjust as needed. Max typical BSON document size is 16MB.
+    // A 5MB Data URI is ~3.7MB of binary data. Still very large for a DB field.
+    const MAX_DATA_URI_LENGTH = 5 * 1024 * 1024; // 5 MB approx
+    if (avatarUrl.length > MAX_DATA_URI_LENGTH) {
+        return NextResponse.json({ success: false, message: 'Image file is too large. Please use a smaller image.' }, { status: 413 }); // 413 Payload Too Large
     }
     
     const db = await connectToDatabase();
@@ -81,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     const result = await usersCollection.updateOne(
       { _id: loggedInUserObjectId },
-      { $set: { avatarUrl: avatarUrl, updatedAt: new Date() } } // Also update updatedAt if you track that on users
+      { $set: { avatarUrl: avatarUrl, updatedAt: new Date() } } 
     );
 
     if (result.modifiedCount > 0) {
@@ -91,8 +94,8 @@ export async function POST(req: NextRequest) {
       }, { status: 200 });
     } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
       return NextResponse.json({ 
-        success: true, // Still success, maybe URL was the same
-        message: 'Profile picture is already set to this URL.'
+        success: true, 
+        message: 'Profile picture is already set to this image.'
       }, { status: 200 });
     }
     else {

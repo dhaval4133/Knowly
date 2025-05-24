@@ -11,8 +11,8 @@ import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Edit } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowRight, Edit, Camera } from 'lucide-react';
+import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ProfileData, UserAnswerEntry } from '@/app/profile/[userId]/page';
 import {
@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from '@/hooks/use-toast';
+import Image from 'next/image';
 
 
 interface ProfileClientLayoutProps {
@@ -44,8 +45,12 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [isLoadingSession, setIsLoadingSession] = useState(true);
   const [isAvatarDialogOpen, setIsAvatarDialogOpen] = useState(false);
-  const [newAvatarUrl, setNewAvatarUrl] = useState('');
+  const [newAvatarFile, setNewAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [newAvatarDataUri, setNewAvatarDataUri] = useState<string | null>(null);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const router = useRouter();
   const { toast } = useToast();
 
@@ -71,9 +76,26 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   
   const { fetchedUser, userQuestions, userAnswers } = profileData;
 
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setNewAvatarFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string);
+        setNewAvatarDataUri(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setNewAvatarFile(null);
+      setAvatarPreview(null);
+      setNewAvatarDataUri(null);
+    }
+  };
+
   const handleAvatarUpdate = async () => {
-    if (!newAvatarUrl.trim()) {
-      toast({ title: "Invalid URL", description: "Please enter a valid image URL.", variant: "destructive" });
+    if (!newAvatarDataUri) {
+      toast({ title: "No Image Selected", description: "Please select an image file.", variant: "destructive" });
       return;
     }
     setIsUpdatingAvatar(true);
@@ -81,22 +103,33 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
       const response = await fetch('/api/users/update-avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ avatarUrl: newAvatarUrl }),
+        body: JSON.stringify({ avatarUrl: newAvatarDataUri }), // Send Data URI
       });
       const data = await response.json();
       if (response.ok && data.success) {
         toast({ title: "Avatar Updated", description: data.message || "Your profile picture has been updated." });
         setIsAvatarDialogOpen(false);
-        setNewAvatarUrl(''); // Reset field
-        router.refresh(); // Refresh page to show new avatar
+        setNewAvatarFile(null);
+        setAvatarPreview(null);
+        setNewAvatarDataUri(null);
+        router.refresh(); 
       } else {
-        toast({ title: "Update Failed", description: data.message || "Could not update your avatar.", variant: "destructive" });
+        toast({ title: "Update Failed", description: data.message || "Could not update your avatar. The image might be too large or in an unsupported format.", variant: "destructive" });
       }
     } catch (error) {
       console.error("Error updating avatar:", error);
       toast({ title: "Update Error", description: "An unexpected error occurred.", variant: "destructive" });
     } finally {
       setIsUpdatingAvatar(false);
+    }
+  };
+
+  const resetDialog = () => {
+    setNewAvatarFile(null);
+    setAvatarPreview(null);
+    setNewAvatarDataUri(null);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = ""; // Reset file input
     }
   };
 
@@ -130,7 +163,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
       <Card className="shadow-lg overflow-hidden">
         <div className="bg-gradient-to-r from-primary to-accent h-32 md:h-40" data-ai-hint="abstract banner mountains"></div>
         <CardHeader className="flex flex-col items-center text-center -mt-16 md:-mt-20 relative p-6">
-          <AlertDialog open={isAvatarDialogOpen} onOpenChange={setIsAvatarDialogOpen}>
+          <AlertDialog open={isAvatarDialogOpen} onOpenChange={(open) => { setIsAvatarDialogOpen(open); if(!open) resetDialog();}}>
             <AlertDialogTrigger asChild>
               <Button 
                 variant="ghost" 
@@ -145,7 +178,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
                 </Avatar>
                 {isOwnProfile && (
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
-                    <Edit size={32} className="text-white" />
+                    <Camera size={32} className="text-white" />
                   </div>
                 )}
               </Button>
@@ -154,21 +187,34 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
               <AlertDialogHeader>
                 <AlertDialogTitle>Change Profile Picture</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Enter the URL of your new profile picture. Make sure it's a direct link to an image (e.g., .jpg, .png, .gif).
+                  Select an image file from your device (e.g., .jpg, .png, .gif). Recommended size: 200x200px.
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <div className="space-y-2 py-4">
-                <Label htmlFor="avatar-url">Image URL</Label>
+              <div className="space-y-4 py-4">
+                <Label htmlFor="avatar-file">Choose Image</Label>
                 <Input 
-                  id="avatar-url" 
-                  value={newAvatarUrl}
-                  onChange={(e) => setNewAvatarUrl(e.target.value)}
-                  placeholder="https://example.com/your-image.png" 
+                  id="avatar-file" 
+                  type="file"
+                  accept="image/png, image/jpeg, image/gif"
+                  onChange={handleFileChange}
+                  ref={fileInputRef}
+                  className="text-sm"
                 />
+                {avatarPreview && (
+                  <div className="mt-4 border rounded-md p-2 flex justify-center items-center">
+                    <Image 
+                        src={avatarPreview} 
+                        alt="Avatar preview" 
+                        width={128} 
+                        height={128} 
+                        className="rounded-md object-cover" 
+                    />
+                  </div>
+                )}
               </div>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={handleAvatarUpdate} disabled={isUpdatingAvatar || !newAvatarUrl.trim()}>
+                <AlertDialogCancel onClick={resetDialog}>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleAvatarUpdate} disabled={isUpdatingAvatar || !newAvatarDataUri}>
                   {isUpdatingAvatar ? "Saving..." : "Save"}
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -237,3 +283,4 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     </div>
   );
 }
+
