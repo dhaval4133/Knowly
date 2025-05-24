@@ -8,7 +8,7 @@ import { ThemeToggleButton } from '@/components/theme-toggle-button';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import Logo from './logo'; // Import the new Logo component
+// Logo import removed
 
 interface CurrentUser {
   userId: string;
@@ -101,8 +101,8 @@ export default function Header() {
   return (
     <header className="bg-card border-b border-border shadow-sm sticky top-0 z-40">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-        <Link href="/" className="block" aria-label="Knowly Homepage">
-          <Logo />
+        <Link href="/" className="text-2xl font-bold text-primary hover:text-accent transition-colors" aria-label="Knowly Homepage">
+          Knowly
         </Link>
         <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-3">
           <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3">
