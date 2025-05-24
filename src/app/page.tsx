@@ -1,183 +1,138 @@
 
-import type { Question as PopulatedQuestion, User as UserType } from '@/lib/types';
+'use client';
+
+import { useEffect, useState, useRef, useCallback } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import type { PopulatedQuestion } from '@/lib/types';
 import QuestionCard from '@/components/question/question-card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Search, AlertTriangle, ArrowUp, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { MongoClient, Db, ObjectId, WithId, Filter } from 'mongodb';
-import type { AnswerData, QuestionData } from '@/lib/types';
-// import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
+import { fetchPaginatedQuestions, type FetchQuestionsResult } from '@/app/actions/questionActions'; // New server action
+import { Skeleton } from '@/components/ui/skeleton';
 
-// Define a more specific type for Question documents from MongoDB
-interface QuestionDBDocument extends QuestionData { // Inherits fields from QuestionData
-  _id: ObjectId;
-  authorId: ObjectId;
-  answers: AnswerDBDocument[]; // Use specific DB type for answers if different
-}
+const QUESTIONS_PER_PAGE = 10;
 
-interface AnswerDBDocument extends AnswerData { // Inherits fields from AnswerData
-    _id: ObjectId | string; // Can be ObjectId or string from older data or newly pushed answers
-    authorId: ObjectId | string; // Can be ObjectId or string
-}
+export default function Home() {
+  const searchParams = useSearchParams();
+  const router = useRouter(); // For updating URL with search term
+  
+  const initialSearchTerm = searchParams.get('search') || '';
+  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm); // For controlled input
+  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm); // Actual search term used for fetching
 
+  const [questions, setQuestions] = useState<PopulatedQuestion[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dbConfigured, setDbConfigured] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showGoToTop, setShowGoToTop] = useState(false);
 
-interface UserDBDocument extends WithId<Document> {
-  _id: ObjectId;
-  name: string;
-  avatarUrl?: string;
-}
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastQuestionElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (isLoading) return;
+    if (observer.current) observer.current.disconnect();
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && currentPage < totalPages) {
+        setCurrentPage(prevPage => prevPage + 1);
+      }
+    });
+    if (node) observer.current.observe(node);
+  }, [isLoading, currentPage, totalPages]);
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
-const QUESTIONS_PER_PAGE = 10; // Number of questions per page
+  const loadQuestions = useCallback(async (page: number, search: string, isNewSearch: boolean = false) => {
+    if (isNewSearch) {
+      setIsInitialLoading(true);
+      setQuestions([]); // Clear existing questions for a new search
+    } else {
+      setIsLoading(true);
+    }
+    setError(null);
 
-let cachedClient: MongoClient | null = null;
-let cachedDb: Db | null = null;
-
-async function connectToDatabase() {
-  if (cachedClient && cachedDb) {
     try {
-      await cachedClient.db(MONGODB_DB_NAME).command({ ping: 1 });
-      return cachedDb;
+      const result: FetchQuestionsResult = await fetchPaginatedQuestions(page, search);
+      setDbConfigured(result.dbConfigured);
+      if (!result.dbConfigured) {
+        console.warn("Database not configured. Please check environment variables MONGODB_URI and MONGODB_DB_NAME.");
+      } else if (result.error) {
+        setError(result.error);
+        console.error("Error fetching questions:", result.error);
+      } else {
+        setQuestions(prevQuestions => isNewSearch ? result.questions : [...prevQuestions, ...result.questions]);
+        setTotalPages(result.totalPages);
+      }
     } catch (e) {
-      console.warn('Cached MongoDB connection lost for homepage, attempting to reconnect...', e);
-      cachedClient = null;
-      cachedDb = null;
+        const errorMessage = e instanceof Error ? e.message : "An unexpected error occurred.";
+        setError(errorMessage);
+        console.error("Failed to load questions:", e);
+    } finally {
+      setIsLoading(false);
+      setIsInitialLoading(false);
     }
-  }
-  if (!MONGODB_URI || !MONGODB_DB_NAME) {
-    throw new Error('MongoDB URI or DB Name not configured for homepage.');
-  }
-  if (!cachedClient) {
-    cachedClient = new MongoClient(MONGODB_URI);
-    try {
-      await cachedClient.connect();
-    } catch (err) {
-      cachedClient = null;
-      throw err;
+  }, []);
+
+  useEffect(() => {
+    // Initial load or when currentSearch changes
+    setCurrentPage(1); // Reset page to 1 for new search
+    loadQuestions(1, currentSearch, true);
+  }, [currentSearch, loadQuestions]);
+
+  useEffect(() => {
+    // Load more questions when currentPage changes (except for initial load)
+    if (currentPage > 1) {
+      loadQuestions(currentPage, currentSearch);
     }
-  }
-  cachedDb = cachedClient.db(MONGODB_DB_NAME);
-  return cachedDb;
-}
+  }, [currentPage, currentSearch, loadQuestions]);
 
-interface FetchQuestionsResult {
-  questions: PopulatedQuestion[];
-  totalQuestions: number;
-  currentPage: number;
-  totalPages: number;
-}
-
-async function getAllQuestions(searchTerm?: string, page: number = 1): Promise<FetchQuestionsResult> {
-  try {
-    const db = await connectToDatabase();
-    const questionsCollection = db.collection<QuestionDBDocument>('questions');
-    const usersCollection = db.collection<UserDBDocument>('users');
-
-    const query: Filter<QuestionDBDocument> = {};
-    if (searchTerm && searchTerm.trim() !== '') {
-      const regex = { $regex: searchTerm, $options: 'i' }; // Case-insensitive search
-      query.$or = [
-        { title: regex },
-        { description: regex },
-        { tags: regex } // Also search in tags array
-      ];
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const newSearchTerm = searchTermInput.trim();
+    // Update URL
+    const params = new URLSearchParams(window.location.search);
+    if (newSearchTerm) {
+      params.set('search', newSearchTerm);
+    } else {
+      params.delete('search');
     }
-
-    const totalQuestions = await questionsCollection.countDocuments(query);
-    const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
-    const skipAmount = (page - 1) * QUESTIONS_PER_PAGE;
-
-    // Sort by updatedAt descending for most recent activity
-    const questionDocs = await questionsCollection.find(query)
-      .sort({ updatedAt: -1 })
-      .skip(skipAmount)
-      .limit(QUESTIONS_PER_PAGE)
-      .toArray();
-    
-    const questionAuthorIds = new Set<ObjectId>();
-    questionDocs.forEach(qDoc => {
-      questionAuthorIds.add(qDoc.authorId);
-    });
-    
-    const uniqueQuestionAuthorIdsArray = Array.from(questionAuthorIds);
-
-    const authorsArray = await usersCollection.find({ _id: { $in: uniqueQuestionAuthorIdsArray } }).toArray();
-    const authorsMap = new Map<string, UserType>();
-    authorsArray.forEach(authorDoc => {
-      authorsMap.set(authorDoc._id.toString(), {
-        id: authorDoc._id.toString(),
-        name: authorDoc.name,
-        avatarUrl: authorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${authorDoc.name[0]?.toUpperCase() || 'U'}`,
-      });
-    });
-    
-    const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
-
-    const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
-      const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
-      
-      const populatedAnswers = (qDoc.answers || []).map(ans => {
-        const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
-        // For QuestionCard, we only need answer count. Populate with defaultAuthor to satisfy types.
-        return {
-          id: ansId,
-          content: ans.content,
-          author: defaultAuthor, 
-          createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
-          upvotes: ans.upvotes,
-          downvotes: ans.downvotes,
-        };
-      });
-
-      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) 
-                             ? new Date(qDoc.createdAt).toISOString() 
-                             : new Date(0).toISOString();
-      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) 
-                             ? new Date(qDoc.updatedAt).toISOString() 
-                             : validCreatedAt;
-
-      return {
-        id: qDoc._id.toString(),
-        title: qDoc.title,
-        description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
-        author: questionAuthor,
-        createdAt: validCreatedAt,
-        updatedAt: validUpdatedAt,
-        upvotes: qDoc.upvotes,
-        downvotes: qDoc.downvotes,
-        views: qDoc.views,
-        answers: populatedAnswers,
-      };
-    });
-
-    return { questions: populatedQuestions, totalQuestions, currentPage: page, totalPages };
-  } catch (error) {
-    console.error('Error fetching questions for homepage:', error);
-    return { questions: [], totalQuestions: 0, currentPage: 1, totalPages: 0 }; 
-  }
-}
-
-interface HomePageProps {
-  searchParams?: {
-    search?: string;
-    page?: string;
+    router.replace(`/?${params.toString()}`, { scroll: false }); // Use replace to avoid history spam
+    setCurrentSearch(newSearchTerm); // This will trigger the useEffect for loading questions
   };
-}
+  
+  useEffect(() => {
+    const handleScrollButtonVisibility = () => {
+      window.pageYOffset > 300 ? setShowGoToTop(true) : setShowGoToTop(false);
+    };
+    window.addEventListener('scroll', handleScrollButtonVisibility);
+    return () => {
+      window.removeEventListener('scroll', handleScrollButtonVisibility);
+    };
+  }, []);
 
-export default async function Home({ searchParams }: HomePageProps) {
-  const searchTerm = searchParams?.search;
-  const currentPage = parseInt(searchParams?.page || '1', 10);
-  const { questions, totalQuestions, totalPages } = await getAllQuestions(searchTerm, currentPage);
+  const scrollToTop = () => {
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
+  };
 
-  const hasPreviousPage = currentPage > 1;
-  const hasNextPage = currentPage < totalPages;
-
+  if (!dbConfigured) {
+    return (
+      <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg max-w-2xl mx-auto">
+        <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-2xl font-semibold text-destructive">Database Not Configured</h2>
+        <p className="text-muted-foreground mt-2">
+          The application requires MongoDB connection details (MONGODB_URI and MONGODB_DB_NAME) to be set in environment variables.
+          Please configure them to see and post questions.
+        </p>
+      </div>
+    );
+  }
+  
   return (
-    <div className="space-y-8">
-      {/* <RealtimeUpdateTrigger intervalMs={15000} /> */}
+    <div className="space-y-8 relative">
       <div className="text-center">
         <h1 className="text-4xl font-bold text-primary mb-2">Welcome to Knowly</h1>
         <p className="text-lg text-muted-foreground">
@@ -185,87 +140,109 @@ export default async function Home({ searchParams }: HomePageProps) {
         </p>
       </div>
 
-      <form method="GET" action="/" className="flex w-full max-w-2xl mx-auto items-center space-x-2">
+      <form onSubmit={handleSearchSubmit} className="flex w-full max-w-2xl mx-auto items-center space-x-2">
         <Input 
           type="search" 
           name="search"
           placeholder="Search questions by keyword or tag..." 
           className="flex-grow" 
-          defaultValue={searchTerm || ''}
+          value={searchTermInput}
+          onChange={(e) => setSearchTermInput(e.target.value)}
         />
         <Button type="submit" variant="default">
           <Search className="mr-2 h-4 w-4" /> Search
         </Button>
       </form>
 
-      {searchTerm && (
+      {currentSearch && !isInitialLoading && (
         <div className="text-center">
           <p className="text-lg text-muted-foreground">
-            Showing results for: <span className="font-semibold text-primary">{searchTerm}</span>
+            Showing results for: <span className="font-semibold text-primary">{currentSearch}</span>
           </p>
         </div>
       )}
-
-      {MONGODB_URI && MONGODB_DB_NAME ? (
-        <div className="space-y-6">
-          {questions.map((question) => (
-            <QuestionCard key={question.id} question={question} />
-          ))}
-        </div>
-      ) : (
+      
+      {error && (
          <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg">
           <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
-          <h2 className="text-2xl font-semibold text-destructive">Database Not Configured</h2>
-          <p className="text-muted-foreground mt-2">
-            The application requires MongoDB connection details (MONGODB_URI and MONGODB_DB_NAME) to be set in environment variables.
-            Please configure them to see and post questions.
-          </p>
+          <h2 className="text-2xl font-semibold text-destructive">Error Loading Questions</h2>
+          <p className="text-muted-foreground mt-2">{error}</p>
         </div>
       )}
 
+      <div className="space-y-6">
+        {questions.map((question, index) => {
+          if (questions.length === index + 1) {
+            return <div ref={lastQuestionElementRef} key={question.id}><QuestionCard question={question} /></div>;
+          }
+          return <QuestionCard key={question.id} question={question} />;
+        })}
+      </div>
 
-      {questions.length === 0 && MONGODB_URI && MONGODB_DB_NAME && (
+      {isInitialLoading && (
+        <div className="space-y-6 mt-8">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="shadow-lg">
+              <CardHeader>
+                <Skeleton className="h-8 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-4 w-2/3" />
+                <div className="mt-3 flex gap-2">
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-between items-center">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-9 w-32 rounded-md" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
+      
+      {isLoading && !isInitialLoading && (
+        <div className="flex justify-center items-center py-8">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-2 text-muted-foreground">Loading more questions...</p>
+        </div>
+      )}
+
+      {!isInitialLoading && !isLoading && questions.length === 0 && dbConfigured && !error && (
         <div className="text-center py-12">
           <h2 className="text-2xl font-semibold text-muted-foreground">
-            {searchTerm ? 'No questions found matching your search.' : 'No questions yet!'}
+            {currentSearch ? 'No questions found matching your search.' : 'No questions yet!'}
           </h2>
           <p className="text-muted-foreground">
-            {searchTerm ? 'Try a different search term or ' : 'Be the first to '}
+            {currentSearch ? 'Try a different search term or ' : 'Be the first to '}
             <Link href="/ask" className="text-primary hover:underline">ask a question</Link>
-            {searchTerm ? '.' : ' and spark a discussion.'}
+            {currentSearch ? '.' : ' and spark a discussion.'}
           </p>
         </div>
       )}
 
-      {totalQuestions > 0 && MONGODB_URI && MONGODB_DB_NAME && (
-        <div className="flex justify-center items-center space-x-4 mt-12">
-          {hasPreviousPage ? (
-            <Button asChild variant="outline">
-              <Link href={`/?${searchTerm ? `search=${encodeURIComponent(searchTerm)}&` : ''}page=${currentPage - 1}`}>
-                <ArrowLeft className="mr-2 h-4 w-4" /> Previous
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" disabled>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Previous
-            </Button>
-          )}
-          <span className="text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-          {hasNextPage ? (
-            <Button asChild variant="outline">
-              <Link href={`/?${searchTerm ? `search=${encodeURIComponent(searchTerm)}&` : ''}page=${currentPage + 1}`}>
-                Next <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          ) : (
-            <Button variant="outline" disabled>
-               Next <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          )}
-        </div>
+      {showGoToTop && (
+        <Button
+          onClick={scrollToTop}
+          variant="default"
+          size="icon"
+          className="fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg z-50"
+          aria-label="Go to top"
+        >
+          <ArrowUp className="h-6 w-6" />
+        </Button>
       )}
     </div>
   );
 }
+
+// Dummy Card, CardHeader, CardContent, CardFooter for Skeleton
+const Card = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("rounded-lg border bg-card text-card-foreground", className)}>{children}</div>;
+const CardHeader = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>;
+const CardContent = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("p-6 pt-0", className)}>{children}</div>;
+const CardFooter = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex items-center p-6 pt-0", className)}>{children}</div>;
+const cn = (...inputs: any[]) => inputs.filter(Boolean).join(' ');
