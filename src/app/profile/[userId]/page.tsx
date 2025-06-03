@@ -18,6 +18,7 @@ interface UserDBDocument extends WithId<Document> {
   email?: string;
   createdAt: Date;
   avatarUrl?: string;
+  bookmarkedQuestionIds?: ObjectId[];
 }
 
 interface QuestionDBDocument extends QuestionData {
@@ -46,12 +47,14 @@ export interface PlainProfileUser {
   email?: string;
   createdAt: string; // ISO string
   avatarUrl?: string;
+  bookmarkedQuestionIds?: string[];
 }
 
 export interface ProfileData {
   fetchedUser: PlainProfileUser | null; // Use PlainProfileUser
   userQuestions: PopulatedQuestion[];
   userAnswers: UserAnswerEntry[];
+  userBookmarkedQuestions: PopulatedQuestion[];
   dbConfigured: boolean;
   profileUserId: string;
 }
@@ -105,11 +108,12 @@ async function getQuestionsByAuthorId(authorIdString: string, db: Db, usersColle
     try {
         const questionsCollection = db.collection<QuestionDBDocument>('questions');
         const authorObjectId = new ObjectId(authorIdString);
-        const questionDocs = await questionsCollection.find({ authorId: authorObjectId }).sort({ updatedAt: -1 }).toArray();
+        const questionDocs = await questionsCollection.find({ authorId: authorObjectId })
+          .project({ 'answers.content': 0 }) // Performance: Exclude answer content
+          .sort({ updatedAt: -1 })
+          .toArray();
         
         const profileAuthorDoc = await usersCollection.findOne({ _id: authorObjectId });
-        // If profileAuthorDoc is null (e.g. user deleted but questions remain), we might want a fallback or handle it.
-        // For now, if the author doesn't exist, we use a defaultAuthor.
         const profileAuthor: UserType = profileAuthorDoc ? {
             id: profileAuthorDoc._id.toString(),
             name: profileAuthorDoc.name,
@@ -122,8 +126,8 @@ async function getQuestionsByAuthorId(authorIdString: string, db: Db, usersColle
                 const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
                 return {
                     id: ansId,
-                    content: ans.content,
-                    author: defaultAuthor, // Using defaultAuthor as QuestionCard doesn't display this for lists
+                    // content is excluded by projection
+                    author: defaultAuthor, 
                     createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
                     upvotes: ans.upvotes,
                     downvotes: ans.downvotes,
@@ -150,7 +154,7 @@ async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCo
     try {
         const questionsCollection = db.collection<QuestionDBDocument>('questions');
         const profileUserObjectId = new ObjectId(profileUserIdString);
-        const profileUserDoc = await usersCollection.findOne({ _id: profileUserObjectId });
+        const profileUserDoc = await usersCollection.findOne({ _id: profileUserObjectId }, { projection: { name: 1, avatarUrl: 1 } });
         if (!profileUserDoc) return [];
 
         const profileUserType: UserType = {
@@ -158,13 +162,23 @@ async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCo
             avatarUrl: profileUserDoc.avatarUrl || `https://placehold.co/100x100.png?text=${profileUserDoc.name[0]?.toUpperCase() || 'U'}`,
         };
         
-        const questionDocs = await questionsCollection.find({ "answers.authorId": profileUserIdString }).sort({"answers.createdAt": -1}).toArray();
+        // Fetch questions containing answers by the user, projecting only necessary fields
+        const questionDocs = await questionsCollection.find(
+          { "answers.authorId": profileUserIdString },
+          { 
+            projection: { 
+              _id: 1, 
+              title: 1, 
+              answers: { $elemMatch: { authorId: profileUserIdString } } // Get only matching answers
+            } 
+          }
+        ).toArray();
+        
         const userAnswerEntries: UserAnswerEntry[] = [];
 
         for (const qDoc of questionDocs) {
-            for (const ans of (qDoc.answers || [])) {
-                const answerAuthorIdStr = ans.authorId.toString();
-                if (answerAuthorIdStr === profileUserIdString) {
+            for (const ans of (qDoc.answers || [])) { // Should ideally be just one answer due to $elemMatch
+                if (ans.authorId.toString() === profileUserIdString) { // Double check, $elemMatch should ensure this
                     userAnswerEntries.push({
                         answer: {
                             id: typeof ans._id === 'string' ? ans._id : ans._id.toString(), content: ans.content, author: profileUserType,
@@ -176,6 +190,7 @@ async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCo
                 }
             }
         }
+        // Sort client-side after extraction
         userAnswerEntries.sort((a, b) => new Date(b.answer.createdAt).getTime() - new Date(a.answer.createdAt).getTime());
         return userAnswerEntries;
     } catch (error) {
@@ -184,10 +199,57 @@ async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCo
     }
 }
 
+async function getBookmarkedQuestions(bookmarkedIds: ObjectId[], db: Db): Promise<PopulatedQuestion[]> {
+    if (!bookmarkedIds || bookmarkedIds.length === 0) return [];
+    const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
+    try {
+        const questionsCollection = db.collection<QuestionDBDocument>('questions');
+        const usersCollection = db.collection<UserDBDocument>('users');
+
+        const questionDocs = await questionsCollection.find({ _id: { $in: bookmarkedIds } })
+            .project({ 'answers.content': 0 }) // Performance: Exclude answer content
+            .sort({ updatedAt: -1 })
+            .toArray();
+
+        const authorIds = new Set<ObjectId>();
+        questionDocs.forEach(qDoc => authorIds.add(qDoc.authorId));
+
+        const authorsArray = await usersCollection.find({ _id: { $in: Array.from(authorIds) } }).toArray();
+        const authorsMap = new Map<string, UserType>();
+        authorsArray.forEach(authorDoc => {
+            authorsMap.set(authorDoc._id.toString(), {
+                id: authorDoc._id.toString(), name: authorDoc.name,
+                avatarUrl: authorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${authorDoc.name[0]?.toUpperCase() || 'U'}`,
+            });
+        });
+
+        return questionDocs.map(qDoc => {
+            const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
+            const populatedAnswers = (qDoc.answers || []).map(ans => ({
+                id: typeof ans._id === 'string' ? ans._id : ans._id.toString(),
+                author: defaultAuthor,
+                createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+                upvotes: ans.upvotes,
+                downvotes: ans.downvotes,
+            }));
+            return {
+                id: qDoc._id.toString(), title: qDoc.title, description: qDoc.description,
+                tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), author: questionAuthor,
+                createdAt: qDoc.createdAt ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString(),
+                updatedAt: qDoc.updatedAt ? new Date(qDoc.updatedAt).toISOString() : new Date(0).toISOString(),
+                upvotes: qDoc.upvotes, downvotes: qDoc.downvotes, views: qDoc.views, answers: populatedAnswers,
+            };
+        });
+    } catch (error) {
+        console.error('Error fetching bookmarked questions:', error);
+        return [];
+    }
+}
+
 
 async function fetchProfilePageData(userId: string): Promise<ProfileData> {
     if (!MONGODB_URI || !MONGODB_DB_NAME) {
-        return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: false, profileUserId: userId };
+        return { fetchedUser: null, userQuestions: [], userAnswers: [], userBookmarkedQuestions: [], dbConfigured: false, profileUserId: userId };
     }
 
     try {
@@ -196,33 +258,34 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
         const userDoc = await getUserById(userId, db);
 
         if (!userDoc) {
-            return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true, profileUserId: userId };
+            return { fetchedUser: null, userQuestions: [], userAnswers: [], userBookmarkedQuestions: [], dbConfigured: true, profileUserId: userId };
         }
 
-        // Convert UserDBDocument to PlainProfileUser for serialization
         const plainFetchedUser: PlainProfileUser = {
             _id: userDoc._id.toString(),
             name: userDoc.name,
             email: userDoc.email,
             createdAt: userDoc.createdAt ? new Date(userDoc.createdAt).toISOString() : new Date(0).toISOString(),
             avatarUrl: userDoc.avatarUrl,
+            bookmarkedQuestionIds: (userDoc.bookmarkedQuestionIds || []).map(id => id.toString()),
         };
 
         const questions = await getQuestionsByAuthorId(userDoc._id.toString(), db, usersCollection);
         const answers = await getAnswersByAuthorId(userDoc._id.toString(), db, usersCollection);
+        const bookmarkedQuestions = await getBookmarkedQuestions(userDoc.bookmarkedQuestionIds || [], db);
         
         return { 
             fetchedUser: plainFetchedUser, 
             userQuestions: questions, 
             userAnswers: answers, 
+            userBookmarkedQuestions: bookmarkedQuestions,
             dbConfigured: true, 
             profileUserId: userId 
         };
 
     } catch (dbError) {
         console.error("ProfilePage: Database error during data fetching", dbError);
-        // Ensure a valid ProfileData structure is returned even on error
-        return { fetchedUser: null, userQuestions: [], userAnswers: [], dbConfigured: true, profileUserId: userId }; 
+        return { fetchedUser: null, userQuestions: [], userAnswers: [], userBookmarkedQuestions: [], dbConfigured: true, profileUserId: userId }; 
     }
 }
 
@@ -243,9 +306,8 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
   }
 
   if (!profileData.fetchedUser) {
-    notFound(); // For Server Components, notFound() is appropriate
+    notFound(); 
   }
   
   return <ProfileClientLayout profileData={profileData} />;
 }
-

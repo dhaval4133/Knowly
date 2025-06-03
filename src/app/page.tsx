@@ -11,17 +11,19 @@ import { Search, AlertTriangle, ArrowUp, Loader2, ChevronDown } from 'lucide-rea
 import Link from 'next/link';
 import { fetchPaginatedQuestions, type FetchQuestionsResult } from '@/app/actions/questionActions';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils'; // For Card component helper
+import { cn } from '@/lib/utils';
 
 const QUESTIONS_PER_PAGE = 10;
+const SEARCH_DEBOUNCE_DELAY = 500; // 500ms
 
 export default function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const initialSearchTerm = searchParams.get('search') || '';
-  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm);
-  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm);
+  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm); // For immediate input display
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(initialSearchTerm); // For triggering search
+  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm); // Actual term used for fetching
 
   const [questions, setQuestions] = useState<PopulatedQuestion[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -47,7 +49,7 @@ export default function Home() {
   const loadQuestions = useCallback(async (page: number, search: string, isNewSearch: boolean = false) => {
     if (isNewSearch) {
       setIsInitialLoading(true);
-      setQuestions([]);
+      setQuestions([]); // Clear questions for a new search
     } else {
       setIsLoading(true);
     }
@@ -75,36 +77,58 @@ export default function Home() {
     }
   }, []);
 
+  // Debounce search term
   useEffect(() => {
-    setCurrentPage(1);
-    loadQuestions(1, currentSearch, true);
-  }, [currentSearch, loadQuestions]);
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchTermInput);
+    }, SEARCH_DEBOUNCE_DELAY);
 
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTermInput]);
+
+  // Effect to trigger search when debouncedSearchTerm changes
   useEffect(() => {
-    if (currentPage > 1 && !isInitialLoading) { // Ensure not to load on initial mount if page is 1
-      loadQuestions(currentPage, currentSearch);
-    }
-  }, [currentPage, currentSearch, loadQuestions, isInitialLoading]);
-
-  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const newSearchTerm = searchTermInput.trim();
+    const newSearchTerm = debouncedSearchTerm.trim();
     const params = new URLSearchParams(window.location.search);
     if (newSearchTerm) {
       params.set('search', newSearchTerm);
     } else {
       params.delete('search');
     }
-    router.replace(`/?${params.toString()}`, { scroll: false });
-    setCurrentSearch(newSearchTerm);
-  };
+    // Only push to router and update currentSearch if the debounced term actually changes the active search
+    if (newSearchTerm !== currentSearch) {
+      router.replace(`/?${params.toString()}`, { scroll: false });
+      setCurrentSearch(newSearchTerm);
+    } else if (!newSearchTerm && currentSearch) { // Handle clearing search
+      router.replace(`/?${params.toString()}`, { scroll: false });
+      setCurrentSearch('');
+    }
+  }, [debouncedSearchTerm, router, currentSearch]);
+
+
+  // Effect to load questions when currentSearch changes (actual search term)
+  useEffect(() => {
+    setCurrentPage(1); // Reset to page 1 for new search
+    loadQuestions(1, currentSearch, true); // isNewSearch = true
+  }, [currentSearch, loadQuestions]);
+
+  // Effect to load more questions when currentPage changes (for infinite scroll)
+  useEffect(() => {
+    // Only load if it's not the initial load for page 1 and not a new search that resets questions
+    if (currentPage > 1 && !isInitialLoading) {
+      loadQuestions(currentPage, currentSearch, false); // isNewSearch = false
+    }
+  }, [currentPage, loadQuestions, currentSearch, isInitialLoading]);
+
 
   useEffect(() => {
     const handleGoToTopVisibility = () => {
       window.pageYOffset > 300 ? setShowGoToTop(true) : setShowGoToTop(false);
     };
     window.addEventListener('scroll', handleGoToTopVisibility);
-    handleGoToTopVisibility(); // Check on mount
+    handleGoToTopVisibility();
     return () => {
       window.removeEventListener('scroll', handleGoToTopVisibility);
     };
@@ -117,7 +141,25 @@ export default function Home() {
     });
   };
 
-  if (!dbConfigured && isInitialLoading) { // Only show full page skeleton if initial load for DB check
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTermInput(e.target.value);
+  };
+
+  // Manual search submission (e.g., pressing Enter or search button)
+  // This bypasses debounce for immediate action if desired, or can align with debounce
+  const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const newSearchTerm = searchTermInput.trim();
+    // Update debounced term immediately to trigger search effect, or directly set currentSearch
+    if (newSearchTerm !== currentSearch) {
+      setDebouncedSearchTerm(newSearchTerm); // This will trigger the search via useEffect
+    } else if (!newSearchTerm && currentSearch) {
+      setDebouncedSearchTerm('');
+    }
+  };
+
+
+  if (!dbConfigured && isInitialLoading) {
     return (
         <div className="space-y-8 relative">
             <Skeleton className="h-20 w-1/2 mx-auto" />
@@ -179,7 +221,7 @@ export default function Home() {
           placeholder="Search questions by keyword or tag..."
           className="flex-grow"
           value={searchTermInput}
-          onChange={(e) => setSearchTermInput(e.target.value)}
+          onChange={handleSearchInputChange}
         />
         <Button type="submit" variant="default">
           <Search className="mr-2 h-4 w-4" /> Search
@@ -204,7 +246,7 @@ export default function Home() {
 
       <div className="space-y-6">
         {questions.map((question, index) => {
-          if (questions.length === index + 1) {
+          if (questions.length === index + 1 && currentPage < totalPages && !isLoading) { // Check all conditions for ref
             return <div ref={lastQuestionElementRef} key={question.id}><QuestionCard question={question} /></div>;
           }
           return <QuestionCard key={question.id} question={question} />;
@@ -277,4 +319,3 @@ const Card = ({ className, children }: { className?: string, children: React.Rea
 const CardHeader = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>;
 const CardContent = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("p-6 pt-0", className)}>{children}</div>;
 const CardFooter = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex items-center p-6 pt-0", className)}>{children}</div>;
-
