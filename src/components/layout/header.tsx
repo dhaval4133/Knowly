@@ -15,7 +15,8 @@ interface CurrentUser {
   userId: string;
   userName: string;
   avatarUrl?: string;
-  bookmarkedQuestionIds?: string[]; // Added for bookmarks
+  bookmarkedQuestionIds?: string[];
+  bio?: string; // Added bio field
 }
 
 export default function Header() {

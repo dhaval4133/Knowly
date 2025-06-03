@@ -18,7 +18,8 @@ interface UserDBDocument extends WithId<Document> {
   email?: string;
   createdAt: Date;
   avatarUrl?: string;
-  bookmarkedQuestionIds?: ObjectId[]; // Ensure this field exists
+  bookmarkedQuestionIds?: ObjectId[];
+  bio?: string; // Added bio field
 }
 
 interface QuestionDBDocument extends QuestionData {
@@ -47,7 +48,8 @@ export interface PlainProfileUser {
   email?: string;
   createdAt: string; // ISO string
   avatarUrl?: string;
-  bookmarkedQuestionIds?: string[]; // Ensure this field exists as string array
+  bookmarkedQuestionIds?: string[];
+  bio?: string; // Added bio field
 }
 
 export interface ProfileData {
@@ -97,7 +99,7 @@ async function getUserById(userId: string, db: Db): Promise<UserDBDocument | nul
   try {
     return await db.collection<UserDBDocument>('users').findOne(
         { _id: new ObjectId(userId) },
-        { projection: { name: 1, email: 1, createdAt: 1, avatarUrl: 1, bookmarkedQuestionIds: 1 } }
+        { projection: { name: 1, email: 1, createdAt: 1, avatarUrl: 1, bookmarkedQuestionIds: 1, bio: 1 } } // Include bio
     );
   } catch (error) {
     console.error('Error fetching user from DB for profile page:', error);
@@ -275,6 +277,7 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
             createdAt: userDoc.createdAt ? new Date(userDoc.createdAt).toISOString() : new Date(0).toISOString(),
             avatarUrl: userDoc.avatarUrl,
             bookmarkedQuestionIds: (userDoc.bookmarkedQuestionIds || []).map(id => id.toString()),
+            bio: userDoc.bio, // Include bio
         };
 
         // Fetch questions, answers, and bookmarked questions
@@ -321,4 +324,3 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
   return <ProfileClientLayout profileData={profileData} />;
 }
-

@@ -11,7 +11,7 @@ import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Camera } from 'lucide-react';
+import { ArrowRight, Camera, Edit3, Save, XCircle } from 'lucide-react';
 import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ProfileData, UserAnswerEntry } from '@/app/profile/[userId]/page';
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
 
@@ -40,10 +41,12 @@ interface CurrentUser {
   userId: string;
   userName: string;
   bookmarkedQuestionIds?: string[];
+  bio?: string;
 }
 
 const MAX_AVATAR_SIZE_MB = 2;
 const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
+const MAX_BIO_LENGTH = 500;
 
 
 export default function ProfileClientLayout({ profileData }: ProfileClientLayoutProps) {
@@ -55,6 +58,10 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   const [newAvatarDataUri, setNewAvatarDataUri] = useState<string | null>(null);
   const [isUpdatingAvatar, setIsUpdatingAvatar] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioText, setBioText] = useState(profileData.fetchedUser?.bio || '');
+  const [isSavingBio, setIsSavingBio] = useState(false);
 
   const router = useRouter();
   const { toast } = useToast();
@@ -78,6 +85,12 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     };
     fetchUserSession();
   }, []);
+
+  // Update bioText if profileData changes (e.g., after router.refresh)
+  useEffect(() => {
+    setBioText(profileData.fetchedUser?.bio || '');
+  }, [profileData.fetchedUser?.bio]);
+
 
   const { fetchedUser, userQuestions, userAnswers, userBookmarkedQuestions } = profileData;
 
@@ -104,7 +117,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
           description: `Please select an image file (${ALLOWED_AVATAR_TYPES.join(', ')}).`,
           variant: "destructive",
         });
-        resetDialog();
+        resetAvatarDialog();
         return;
       }
       if (file.size > MAX_AVATAR_SIZE_MB * 1024 * 1024) {
@@ -113,7 +126,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
           description: `Please select an image smaller than ${MAX_AVATAR_SIZE_MB}MB.`,
           variant: "destructive",
         });
-        resetDialog();
+        resetAvatarDialog();
         return;
       }
 
@@ -147,7 +160,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
       if (response.ok && data.success) {
         toast({ title: "Avatar Updated", description: data.message || "Your profile picture has been updated." });
         setIsAvatarDialogOpen(false);
-        resetDialog();
+        resetAvatarDialog();
         router.refresh();
       } else {
         toast({ title: "Update Failed", description: data.message || "Could not update your avatar. The image might be too large or in an unsupported format.", variant: "destructive" });
@@ -160,13 +173,50 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     }
   };
 
-  const resetDialog = () => {
+  const resetAvatarDialog = () => {
     setNewAvatarFile(null);
     setAvatarPreview(null);
     setNewAvatarDataUri(null);
     if (fileInputRef.current) {
         fileInputRef.current.value = "";
     }
+  };
+
+  const handleSaveBio = async () => {
+    if (bioText.length > MAX_BIO_LENGTH) {
+      toast({
+        title: "Bio Too Long",
+        description: `Your bio cannot exceed ${MAX_BIO_LENGTH} characters.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSavingBio(true);
+    try {
+      const response = await fetch('/api/users/update-bio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bio: bioText }),
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        toast({ title: "Bio Updated", description: data.message || "Your bio has been updated." });
+        setIsEditingBio(false);
+        router.refresh(); // Refresh data to show updated bio
+      } else {
+        toast({ title: "Update Failed", description: data.message || "Could not update your bio.", variant: "destructive" });
+      }
+    } catch (error) {
+      console.error("Error updating bio:", error);
+      toast({ title: "Update Error", description: "An unexpected error occurred while updating bio.", variant: "destructive" });
+    } finally {
+      setIsSavingBio(false);
+    }
+  };
+
+  const handleCancelEditBio = () => {
+    setBioText(fetchedUser?.bio || ''); // Reset to original bio
+    setIsEditingBio(false);
   };
 
 
@@ -210,7 +260,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
       <Card className="shadow-lg overflow-hidden">
         <div className="bg-gradient-to-r from-primary to-accent h-32 md:h-40" data-ai-hint="abstract banner mountains"></div>
         <CardHeader className="flex flex-col items-center text-center -mt-16 md:-mt-20 relative p-6">
-          <AlertDialog open={isAvatarDialogOpen} onOpenChange={(open) => { setIsAvatarDialogOpen(open); if(!open) resetDialog();}}>
+          <AlertDialog open={isAvatarDialogOpen} onOpenChange={(open) => { setIsAvatarDialogOpen(open); if(!open) resetAvatarDialog();}}>
             <AlertDialogTrigger asChild>
               <Button
                 variant="ghost"
@@ -260,7 +310,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
                 )}
               </div>
               <AlertDialogFooter>
-                <AlertDialogCancel onClick={resetDialog}>Cancel</AlertDialogCancel>
+                <AlertDialogCancel onClick={resetAvatarDialog}>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={handleAvatarUpdate} disabled={isUpdatingAvatar || !newAvatarDataUri}>
                   {isUpdatingAvatar ? "Saving..." : "Save"}
                 </AlertDialogAction>
@@ -270,9 +320,49 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
 
           <CardTitle className="text-3xl font-bold mt-4">{displayUser.name}</CardTitle>
           <p className="text-muted-foreground">Joined Knowly on {joinedDate}</p>
-          <p className="mt-2 max-w-md text-foreground/80">
-            Passionate learner and contributor at Knowly. Always eager to help and explore new ideas.
-          </p>
+          
+          <div className="mt-3 max-w-xl w-full">
+            {isEditingBio && isOwnProfile ? (
+              <div className="space-y-2">
+                <Textarea
+                  value={bioText}
+                  onChange={(e) => setBioText(e.target.value)}
+                  placeholder="Tell us a bit about yourself..."
+                  maxLength={MAX_BIO_LENGTH}
+                  rows={3}
+                  className="text-base bg-background"
+                />
+                <p className="text-xs text-muted-foreground text-right">
+                  {bioText.length}/{MAX_BIO_LENGTH}
+                </p>
+                <div className="flex justify-end space-x-2">
+                  <Button variant="ghost" onClick={handleCancelEditBio} size="sm">
+                    <XCircle className="mr-1 h-4 w-4" />Cancel
+                  </Button>
+                  <Button onClick={handleSaveBio} disabled={isSavingBio} size="sm">
+                    <Save className="mr-1 h-4 w-4" />{isSavingBio ? 'Saving...' : 'Save Bio'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="relative group">
+                <p className="text-foreground/80 whitespace-pre-wrap min-h-[3rem]">
+                  {bioText || (isOwnProfile ? 'Click to add a bio...' : 'No bio yet.')}
+                </p>
+                {isOwnProfile && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsEditingBio(true)}
+                    className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                    aria-label="Edit bio"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </CardHeader>
       </Card>
 
@@ -355,4 +445,3 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     </div>
   );
 }
-

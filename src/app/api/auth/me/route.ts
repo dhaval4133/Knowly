@@ -11,7 +11,8 @@ interface UserDBDocument extends WithId<Document> {
   email?: string;
   avatarUrl?: string;
   activeSessionToken?: string;
-  bookmarkedQuestionIds?: ObjectId[]; // Added for bookmarks
+  bookmarkedQuestionIds?: ObjectId[];
+  bio?: string; // Added bio field
 }
 
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -114,7 +115,8 @@ export async function GET(req: NextRequest) {
             userId: user._id.toString(),
             userName: user.name,
             avatarUrl: user.avatarUrl,
-            bookmarkedQuestionIds: (user.bookmarkedQuestionIds || []).map(id => id.toString()), // Send bookmarked IDs
+            bookmarkedQuestionIds: (user.bookmarkedQuestionIds || []).map(id => id.toString()),
+            bio: user.bio, // Include bio
         }
     }, { status: 200 });
 
