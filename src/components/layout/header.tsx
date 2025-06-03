@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface CurrentUser {
   userId: string;
@@ -102,33 +103,42 @@ export default function Header() {
             </Link>
           </Button>
 
-          {!isLoadingUser && currentUser && (
-             <Button variant="default" size="sm" asChild className="px-2 sm:px-3">
-                <Link href="/ask" className="flex items-center space-x-1 sm:space-x-2">
-                  <MessageSquarePlus size={18} />
-                  <span className="hidden sm:inline">Ask Question</span>
-                </Link>
-            </Button>
-          )}
-
-          {!isLoadingUser && currentUser ? (
-            <div className="flex items-center space-x-1 sm:space-x-2">
-              <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3 h-auto py-1">
-                <Link href={`/profile/${currentUser.userId}`} className="flex items-center space-x-1 sm:space-x-2 text-foreground hover:text-accent">
-                  <Avatar className="h-7 w-7 sm:h-8 sm:w-8">
-                    <AvatarImage src={currentUser.avatarUrl} alt={currentUser.userName} data-ai-hint="user avatar" />
-                    <AvatarFallback>{userInitials}</AvatarFallback>
+          {isLoadingUser ? (
+            <>
+              <Skeleton className="h-9 w-[70px] rounded-md sm:w-[80px]" />
+              <Skeleton className="h-9 w-[90px] rounded-md sm:w-[100px]" />
+            </>
+          ) : currentUser ? (
+            // User is logged in
+            <>
+              {/* Profile button (replaces Login) */}
+              <Button variant="outline" size="sm" asChild className="px-2 sm:px-3">
+                <Link href={`/profile/${currentUser.userId}`} className="flex items-center space-x-1 sm:space-x-2">
+                  <Avatar className="h-6 w-6">
+                      <AvatarImage src={currentUser.avatarUrl} alt={currentUser.userName} data-ai-hint="user avatar"/>
+                      <AvatarFallback>{userInitials.substring(0,1)}</AvatarFallback>
                   </Avatar>
-                  <span className="hidden sm:inline">{currentUser.userName}</span>
+                  <span className="hidden sm:inline">Profile</span>
                 </Link>
               </Button>
-              <Button variant="outline" size="sm" onClick={handleLogout} className="px-2 sm:px-3">
-                <LogOut size={16} className="sm:mr-1" />
+
+              {/* Ask Question button */}
+              <Button variant="default" size="sm" asChild className="px-2 sm:px-3">
+                  <Link href="/ask" className="flex items-center space-x-1 sm:space-x-2">
+                    <MessageSquarePlus size={16} />
+                    <span className="hidden sm:inline">Ask Question</span>
+                  </Link>
+              </Button>
+
+              {/* Logout button (replaces Register) */}
+              <Button variant="default" size="sm" onClick={handleLogout} className="px-2 sm:px-3">
+                <LogOut size={16} />
                 <span className="hidden sm:inline">Logout</span>
               </Button>
-            </div>
-          ) : !isLoadingUser && !currentUser ? (
-            <div className="flex items-center space-x-1 sm:space-x-2">
+            </>
+          ) : (
+            // User is not logged in
+            <>
               <Button variant="outline" size="sm" asChild className="px-2 sm:px-3">
                 <Link href="/login" className="flex items-center space-x-1 sm:space-x-2">
                   <LogIn size={16} />
@@ -141,8 +151,8 @@ export default function Header() {
                   <span className="hidden sm:inline">Register</span>
                 </Link>
               </Button>
-            </div>
-          ) : null }
+            </>
+          )}
           <ThemeToggleButton />
         </div>
       </div>
