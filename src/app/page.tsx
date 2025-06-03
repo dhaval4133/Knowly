@@ -7,20 +7,21 @@ import type { PopulatedQuestion } from '@/lib/types';
 import QuestionCard from '@/components/question/question-card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, AlertTriangle, ArrowUp, Loader2 } from 'lucide-react';
+import { Search, AlertTriangle, ArrowUp, Loader2, ChevronDown } from 'lucide-react';
 import Link from 'next/link';
-import { fetchPaginatedQuestions, type FetchQuestionsResult } from '@/app/actions/questionActions'; // New server action
+import { fetchPaginatedQuestions, type FetchQuestionsResult } from '@/app/actions/questionActions';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils'; // For Card component helper
 
 const QUESTIONS_PER_PAGE = 10;
 
 export default function Home() {
   const searchParams = useSearchParams();
-  const router = useRouter(); // For updating URL with search term
-  
+  const router = useRouter();
+
   const initialSearchTerm = searchParams.get('search') || '';
-  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm); // For controlled input
-  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm); // Actual search term used for fetching
+  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm);
+  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm);
 
   const [questions, setQuestions] = useState<PopulatedQuestion[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -36,7 +37,7 @@ export default function Home() {
     if (isLoading) return;
     if (observer.current) observer.current.disconnect();
     observer.current = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && currentPage < totalPages) {
+      if (entries[0].isIntersecting && currentPage < totalPages && !isLoading) {
         setCurrentPage(prevPage => prevPage + 1);
       }
     });
@@ -46,7 +47,7 @@ export default function Home() {
   const loadQuestions = useCallback(async (page: number, search: string, isNewSearch: boolean = false) => {
     if (isNewSearch) {
       setIsInitialLoading(true);
-      setQuestions([]); // Clear existing questions for a new search
+      setQuestions([]);
     } else {
       setIsLoading(true);
     }
@@ -75,39 +76,37 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Initial load or when currentSearch changes
-    setCurrentPage(1); // Reset page to 1 for new search
+    setCurrentPage(1);
     loadQuestions(1, currentSearch, true);
   }, [currentSearch, loadQuestions]);
 
   useEffect(() => {
-    // Load more questions when currentPage changes (except for initial load)
-    if (currentPage > 1) {
+    if (currentPage > 1 && !isInitialLoading) { // Ensure not to load on initial mount if page is 1
       loadQuestions(currentPage, currentSearch);
     }
-  }, [currentPage, currentSearch, loadQuestions]);
+  }, [currentPage, currentSearch, loadQuestions, isInitialLoading]);
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const newSearchTerm = searchTermInput.trim();
-    // Update URL
     const params = new URLSearchParams(window.location.search);
     if (newSearchTerm) {
       params.set('search', newSearchTerm);
     } else {
       params.delete('search');
     }
-    router.replace(`/?${params.toString()}`, { scroll: false }); // Use replace to avoid history spam
-    setCurrentSearch(newSearchTerm); // This will trigger the useEffect for loading questions
+    router.replace(`/?${params.toString()}`, { scroll: false });
+    setCurrentSearch(newSearchTerm);
   };
-  
+
   useEffect(() => {
-    const handleScrollButtonVisibility = () => {
+    const handleGoToTopVisibility = () => {
       window.pageYOffset > 300 ? setShowGoToTop(true) : setShowGoToTop(false);
     };
-    window.addEventListener('scroll', handleScrollButtonVisibility);
+    window.addEventListener('scroll', handleGoToTopVisibility);
+    handleGoToTopVisibility(); // Check on mount
     return () => {
-      window.removeEventListener('scroll', handleScrollButtonVisibility);
+      window.removeEventListener('scroll', handleGoToTopVisibility);
     };
   }, []);
 
@@ -118,7 +117,40 @@ export default function Home() {
     });
   };
 
-  if (!dbConfigured) {
+  if (!dbConfigured && isInitialLoading) { // Only show full page skeleton if initial load for DB check
+    return (
+        <div className="space-y-8 relative">
+            <Skeleton className="h-20 w-1/2 mx-auto" />
+            <Skeleton className="h-12 w-3/4 mx-auto" />
+            <div className="space-y-6 mt-8">
+            {[...Array(3)].map((_, i) => (
+                <Card key={i} className="shadow-lg">
+                <CardHeader>
+                    <Skeleton className="h-8 w-3/4 mb-2" />
+                    <Skeleton className="h-4 w-1/2" />
+                </CardHeader>
+                <CardContent>
+                    <Skeleton className="h-4 w-full mb-1" />
+                    <Skeleton className="h-4 w-full mb-1" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <div className="mt-3 flex gap-2">
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                    <Skeleton className="h-6 w-20 rounded-full" />
+                    </div>
+                </CardContent>
+                <CardFooter className="flex justify-between items-center">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-9 w-32 rounded-md" />
+                </CardFooter>
+                </Card>
+            ))}
+            </div>
+      </div>
+    );
+  }
+
+
+  if (!dbConfigured && !isInitialLoading) {
     return (
       <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg max-w-2xl mx-auto">
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
@@ -130,7 +162,7 @@ export default function Home() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-8 relative">
       <div className="text-center">
@@ -141,11 +173,11 @@ export default function Home() {
       </div>
 
       <form onSubmit={handleSearchSubmit} className="flex w-full max-w-2xl mx-auto items-center space-x-2">
-        <Input 
-          type="search" 
+        <Input
+          type="search"
           name="search"
-          placeholder="Search questions by keyword or tag..." 
-          className="flex-grow" 
+          placeholder="Search questions by keyword or tag..."
+          className="flex-grow"
           value={searchTermInput}
           onChange={(e) => setSearchTermInput(e.target.value)}
         />
@@ -161,7 +193,7 @@ export default function Home() {
           </p>
         </div>
       )}
-      
+
       {error && (
          <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg">
           <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
@@ -179,7 +211,7 @@ export default function Home() {
         })}
       </div>
 
-      {isInitialLoading && (
+      {isInitialLoading && dbConfigured && (
         <div className="space-y-6 mt-8">
           {[...Array(3)].map((_, i) => (
             <Card key={i} className="shadow-lg">
@@ -204,7 +236,7 @@ export default function Home() {
           ))}
         </div>
       )}
-      
+
       {isLoading && !isInitialLoading && (
         <div className="flex justify-center items-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -240,9 +272,9 @@ export default function Home() {
   );
 }
 
-// Dummy Card, CardHeader, CardContent, CardFooter for Skeleton
+// Dummy Card components for Skeleton structure
 const Card = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("rounded-lg border bg-card text-card-foreground", className)}>{children}</div>;
 const CardHeader = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>;
 const CardContent = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("p-6 pt-0", className)}>{children}</div>;
 const CardFooter = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex items-center p-6 pt-0", className)}>{children}</div>;
-const cn = (...inputs: any[]) => inputs.filter(Boolean).join(' ');
+

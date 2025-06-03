@@ -8,12 +8,13 @@ import { ThemeToggleButton } from '@/components/theme-toggle-button';
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'; // Import Avatar components
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 interface CurrentUser {
   userId: string;
   userName: string;
-  avatarUrl?: string; // Add avatarUrl
+  avatarUrl?: string;
+  bookmarkedQuestionIds?: string[]; // Added for potential use in header, though not directly used now
 }
 
 export default function Header() {
@@ -47,7 +48,7 @@ export default function Header() {
     };
 
     fetchUserSession();
-  }, [pathname]); 
+  }, [pathname]);
 
   const handleLogout = async () => {
     try {
@@ -74,12 +75,12 @@ export default function Header() {
         variant: 'destructive',
       });
     } finally {
-      setCurrentUser(null); 
+      setCurrentUser(null);
       router.push('/login');
-      router.refresh(); // Ensure full refresh after logout
+      router.refresh();
     }
   };
-  
+
   const userInitials = currentUser?.userName.split(' ').map(n => n[0]).join('').toUpperCase() || 'U';
 
   return (
@@ -100,8 +101,8 @@ export default function Header() {
               <span className="hidden sm:inline">Home</span>
             </Link>
           </Button>
-          
-          {(currentUser || !isLoadingUser) && ( 
+
+          {!isLoadingUser && currentUser && (
              <Button variant="default" size="sm" asChild className="px-2 sm:px-3">
                 <Link href="/ask" className="flex items-center space-x-1 sm:space-x-2">
                   <MessageSquarePlus size={18} />
@@ -109,7 +110,7 @@ export default function Header() {
                 </Link>
             </Button>
           )}
-          
+
           {!isLoadingUser && currentUser ? (
             <div className="flex items-center space-x-1 sm:space-x-2">
               <Button variant="ghost" size="sm" asChild className="px-2 sm:px-3 h-auto py-1">
@@ -130,7 +131,7 @@ export default function Header() {
             <div className="flex items-center space-x-1 sm:space-x-2">
               <Button variant="outline" size="sm" asChild className="px-2 sm:px-3">
                 <Link href="/login" className="flex items-center space-x-1 sm:space-x-2">
-                  <LogIn size={16} /> 
+                  <LogIn size={16} />
                   <span className="hidden sm:inline">Login</span>
                 </Link>
               </Button>

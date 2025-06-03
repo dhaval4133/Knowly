@@ -4,7 +4,7 @@ import QuestionCard from '@/components/question/question-card';
 import { AlertTriangle } from 'lucide-react';
 import { MongoClient, Db, ObjectId, WithId, Filter } from 'mongodb';
 import type { AnswerData, QuestionData } from '@/lib/types';
-import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger';
+// import RealtimeUpdateTrigger from '@/components/utils/realtime-update-trigger'; // Removed for consistency
 
 interface TagPageProps {
   params: { tagName: string };
@@ -66,17 +66,15 @@ async function getQuestionsByTag(tagName: string): Promise<PopulatedQuestion[]> 
     const questionsCollection = db.collection<QuestionDBDocument>('questions');
     const usersCollection = db.collection<UserDBDocument>('users');
 
-    // Tags are stored as an array of strings, case-insensitive search for the tag.
     const query: Filter<QuestionDBDocument> = { tags: { $regex: `^${tagName}$`, $options: 'i' } };
 
-    // Sort by updatedAt descending for most recent activity
     const questionDocs = await questionsCollection.find(query).sort({ updatedAt: -1 }).toArray();
-    
+
     const questionAuthorIds = new Set<ObjectId>();
     questionDocs.forEach(qDoc => {
       questionAuthorIds.add(qDoc.authorId);
     });
-    
+
     const uniqueQuestionAuthorIdsArray = Array.from(questionAuthorIds);
 
     const authorsArray = await usersCollection.find({ _id: { $in: uniqueQuestionAuthorIdsArray } }).toArray();
@@ -88,36 +86,36 @@ async function getQuestionsByTag(tagName: string): Promise<PopulatedQuestion[]> 
         avatarUrl: authorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${authorDoc.name[0]?.toUpperCase() || 'U'}`,
       });
     });
-    
+
     const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
 
     const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
       const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
-      
+
       const populatedAnswers = (qDoc.answers || []).map(ans => {
         const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
           id: ansId,
           content: ans.content,
-          author: defaultAuthor, 
+          author: defaultAuthor,
           createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
       });
 
-      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) 
-                             ? new Date(qDoc.createdAt).toISOString() 
+      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime()))
+                             ? new Date(qDoc.createdAt).toISOString()
                              : new Date(0).toISOString();
-      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) 
-                             ? new Date(qDoc.updatedAt).toISOString() 
+      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime()))
+                             ? new Date(qDoc.updatedAt).toISOString()
                              : validCreatedAt;
 
       return {
         id: qDoc._id.toString(),
         title: qDoc.title,
         description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
+        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })),
         author: questionAuthor,
         createdAt: validCreatedAt,
         updatedAt: validUpdatedAt,
@@ -131,12 +129,12 @@ async function getQuestionsByTag(tagName: string): Promise<PopulatedQuestion[]> 
     return populatedQuestions;
   } catch (error) {
     console.error(`Error fetching questions for tag "${tagName}":`, error);
-    return []; 
+    return [];
   }
 }
 
 export default async function TagPage({ params }: TagPageProps) {
-  const tagName = decodeURIComponent(params.tagName);
+  const tagName = decodeURIComponent(params.tagName); // Ensure tag name is decoded
   const questions = await getQuestionsByTag(tagName);
 
   if (!MONGODB_URI || !MONGODB_DB_NAME) {
@@ -153,13 +151,13 @@ export default async function TagPage({ params }: TagPageProps) {
 
   return (
     <div className="space-y-8">
-      <RealtimeUpdateTrigger intervalMs={15000} />
+      {/* <RealtimeUpdateTrigger intervalMs={15000} /> Removed */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-primary">
           Questions tagged with <span className="bg-accent/20 text-accent px-2 py-1 rounded-md">{tagName}</span>
         </h1>
       </header>
-      
+
       {questions.length > 0 ? (
         <div className="space-y-6">
           {questions.map((question) => (
