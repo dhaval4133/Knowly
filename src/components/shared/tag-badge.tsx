@@ -2,12 +2,13 @@
 import type { Tag } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import React from 'react';
 
 interface TagBadgeProps {
   tag: Tag;
 }
 
-export default function TagBadge({ tag }: TagBadgeProps) {
+const TagBadge = React.memo(function TagBadge({ tag }: TagBadgeProps) {
   return (
     <Link href={`/tags/${encodeURIComponent(tag.name.toLowerCase())}`} legacyBehavior>
       <Badge variant="secondary" className="cursor-pointer hover:bg-accent hover:text-accent-foreground transition-colors">
@@ -15,4 +16,6 @@ export default function TagBadge({ tag }: TagBadgeProps) {
       </Badge>
     </Link>
   );
-}
+});
+
+export default TagBadge;

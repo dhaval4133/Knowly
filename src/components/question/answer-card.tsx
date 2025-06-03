@@ -5,13 +5,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import VoteButtons from '@/components/shared/vote-buttons';
 import AnswerActions from '@/components/question/answer-actions'; // New component
 import { formatDistanceToNow } from 'date-fns';
+import React from 'react';
 
 interface AnswerCardProps {
   answer: Answer;
   questionId: string; // Needed for delete action context
 }
 
-export default function AnswerCard({ answer, questionId }: AnswerCardProps) {
+const AnswerCard = React.memo(function AnswerCard({ answer, questionId }: AnswerCardProps) {
   const authorInitials = answer.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
   const timeAgo = formatDistanceToNow(new Date(answer.createdAt), { addSuffix: true });
 
@@ -43,4 +44,6 @@ export default function AnswerCard({ answer, questionId }: AnswerCardProps) {
       </CardFooter>
     </Card>
   );
-}
+});
+
+export default AnswerCard;

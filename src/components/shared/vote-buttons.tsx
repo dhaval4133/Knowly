@@ -1,6 +1,7 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowBigUp, ArrowBigDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -12,7 +13,7 @@ interface VoteButtonsProps {
   itemType: 'question' | 'answer'; // To distinguish between questions and answers
 }
 
-export default function VoteButtons({ initialUpvotes, initialDownvotes, itemId, itemType }: VoteButtonsProps) {
+const VoteButtons = React.memo(function VoteButtons({ initialUpvotes, initialDownvotes, itemId, itemType }: VoteButtonsProps) {
   const [upvotes, setUpvotes] = useState(initialUpvotes);
   const [downvotes, setDownvotes] = useState(initialDownvotes);
   const [voteStatus, setVoteStatus] = useState<'upvoted' | 'downvoted' | null>(null); // 'upvoted', 'downvoted', or null
@@ -95,4 +96,6 @@ export default function VoteButtons({ initialUpvotes, initialDownvotes, itemId, 
       </Button>
     </div>
   );
-}
+});
+
+export default VoteButtons;

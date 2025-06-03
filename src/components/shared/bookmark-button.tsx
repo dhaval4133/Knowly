@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Bookmark } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -18,7 +18,7 @@ interface BookmarkButtonProps {
   isInitiallyBookmarked: boolean;
 }
 
-export default function BookmarkButton({ questionId, isInitiallyBookmarked }: BookmarkButtonProps) {
+const BookmarkButton = React.memo(function BookmarkButton({ questionId, isInitiallyBookmarked }: BookmarkButtonProps) {
   const [localIsBookmarked, setLocalIsBookmarked] = useState(isInitiallyBookmarked);
   const [isLoading, setIsLoading] = useState(false);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
@@ -81,56 +81,43 @@ export default function BookmarkButton({ questionId, isInitiallyBookmarked }: Bo
         body: JSON.stringify({ questionId }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setLocalIsBookmarked(!localIsBookmarked);
-          toast({
-            title: successText,
-            description: data.message,
-          });
-          router.refresh();
-        } else {
-          // API returned success status but operation failed (e.g., already bookmarked when trying to bookmark again)
-          toast({
-            title: failureText,
-            description: data.message || "An error occurred with the bookmark operation.",
-            variant: 'destructive',
-          });
-          // Optionally, re-sync localIsBookmarked if data.isBookmarked is provided
-          if (typeof data.isBookmarked === 'boolean') {
-            setLocalIsBookmarked(data.isBookmarked);
-          }
-        }
+      const data = await response.json(); // Always try to parse JSON first
+
+      if (response.ok && data.success) {
+        setLocalIsBookmarked(!localIsBookmarked);
+        toast({
+          title: successText,
+          description: data.message,
+        });
+        router.refresh(); // Refresh data on the page
       } else {
-        // Handle non-ok responses (e.g., 400, 401, 404, 500)
-        let errorMessage = `API request failed with status ${response.status}.`;
-        try {
-            // Try to get a more specific error message if the server sent one (even if not JSON)
-            const errorData = await response.text();
-            // If errorData is short and not HTML, it might be a useful message
-            if (errorData && errorData.length < 200 && !errorData.trim().startsWith("<!DOCTYPE")) {
-                errorMessage = errorData;
-            } else if (response.status === 401) {
-                errorMessage = "Unauthorized. Please log in again.";
-                router.push('/login');
-            }
-        } catch (e) {
-            // Ignore if parsing error text fails
-        }
+        // Handle specific error message from JSON, or generic error
         toast({
           title: failureText,
-          description: errorMessage,
+          description: data.message || `API request failed with status ${response.status}.`,
           variant: 'destructive',
         });
+         if (response.status === 401) { // Unauthorized
+            router.push('/login');
+        }
+        // Optionally, re-sync localIsBookmarked if data.isBookmarked is provided and operation failed
+        if (typeof data.isBookmarked === 'boolean' && data.success === false) {
+            setLocalIsBookmarked(data.isBookmarked);
+        }
       }
     } catch (error) {
-      console.error(`${actionText} error:`, error);
-      toast({
-        title: "Error",
-        description: `An unexpected error occurred while ${actionText.toLowerCase()}. Check console for details.`,
-        variant: 'destructive',
-      });
+        // This catch block handles network errors or if response.json() fails
+        // (e.g. if server returned HTML error page instead of JSON)
+        console.error(`${actionText} error:`, error);
+        let errorMessage = `An unexpected error occurred while ${actionText.toLowerCase()}.`;
+        if (error instanceof SyntaxError) { // Check if it's a JSON parsing error
+            errorMessage = "Received an invalid response from the server. Please try again.";
+        }
+        toast({
+            title: "Error",
+            description: errorMessage,
+            variant: 'destructive',
+        });
     } finally {
       setIsLoading(false);
     }
@@ -162,4 +149,6 @@ export default function BookmarkButton({ questionId, isInitiallyBookmarked }: Bo
       <Bookmark className="h-5 w-5" fill={localIsBookmarked ? 'currentColor' : 'none'} />
     </Button>
   );
-}
+});
+
+export default BookmarkButton;

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { MessageCircle, Eye, ArrowRight, Reply } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import QuestionActions from '@/components/question/question-actions';
+import React from 'react';
 
 interface QuestionCardProps {
   question: Question;
@@ -16,7 +17,7 @@ interface QuestionCardProps {
   currentUserBookmarkedQuestionIds?: string[];
 }
 
-export default function QuestionCard({
+const QuestionCard = React.memo(function QuestionCard({
   question,
   showAuthorActions = false,
   loggedInUserId,
@@ -96,4 +97,6 @@ export default function QuestionCard({
       </CardFooter>
     </Card>
   );
-}
+});
+
+export default QuestionCard;
