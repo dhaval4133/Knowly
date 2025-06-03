@@ -95,10 +95,10 @@ async function connectToDatabase() {
 async function getUserById(userId: string, db: Db): Promise<UserDBDocument | null> {
   if (!ObjectId.isValid(userId)) return null;
   try {
-    // Ensure bookmarkedQuestionIds is projected
     return await db.collection<UserDBDocument>('users').findOne(
         { _id: new ObjectId(userId) },
-        { projection: { password: 0, bookmarkedQuestionIds: 1, name: 1, email: 1, createdAt: 1, avatarUrl: 1 } }
+        // Use an inclusive projection: list only fields to include. 'password' will be excluded by default.
+        { projection: { name: 1, email: 1, createdAt: 1, avatarUrl: 1, bookmarkedQuestionIds: 1 } }
     );
   } catch (error) {
     console.error('Error fetching user from DB for profile page:', error);
