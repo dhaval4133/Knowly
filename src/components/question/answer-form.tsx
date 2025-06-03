@@ -34,7 +34,7 @@ export default function AnswerForm({ questionId, questionAuthorId }: AnswerFormP
     const fetchUserSession = async () => {
       setIsLoadingUser(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {
@@ -102,14 +102,14 @@ export default function AnswerForm({ questionId, questionAuthorId }: AnswerFormP
           description: data.message || "Your answer has been posted.",
         });
         setContent('');
-        router.refresh(); 
+        router.refresh();
       } else {
         toast({
           title: data.message?.includes("own question") ? "Action Not Allowed" : "Submission Failed",
           description: data.message || "Could not post your answer.",
           variant: "destructive",
         });
-         if (response.status === 401 && !data.success) { 
+         if (response.status === 401 && !data.success) {
             router.push('/login');
         }
       }

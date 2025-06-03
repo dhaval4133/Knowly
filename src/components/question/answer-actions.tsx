@@ -26,7 +26,7 @@ interface CurrentUser {
 interface AnswerActionsProps {
   answerAuthorId: string;
   answerId: string;
-  questionId: string; 
+  questionId: string;
 }
 
 export default function AnswerActions({ answerAuthorId, answerId, questionId }: AnswerActionsProps) {
@@ -40,7 +40,7 @@ export default function AnswerActions({ answerAuthorId, answerId, questionId }: 
     const fetchUserSession = async () => {
       setIsLoadingUser(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {

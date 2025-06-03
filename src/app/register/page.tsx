@@ -12,8 +12,9 @@ export default function RegisterPage() {
 
   useEffect(() => {
     const checkAuthStatus = async () => {
+      setIsLoading(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user && data.user.userId) {

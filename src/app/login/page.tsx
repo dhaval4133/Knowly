@@ -12,21 +12,24 @@ export default function LoginPage() {
 
   useEffect(() => {
     const checkAuthStatus = async () => {
+      setIsLoading(true); // Set loading true at the start of the check
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user && data.user.userId) {
             // User is logged in, redirect to their profile
             router.replace(`/profile/${data.user.userId}`);
-            return; // Stop further execution
+            // Don't set isLoading to false here, as we are redirecting.
+            // The component will unmount.
+            return;
           }
         }
       } catch (error) {
         console.error('Error checking auth status on login page:', error);
-        // Let them see the login page if auth check fails
+        // If error, proceed to show login form
       }
-      setIsLoading(false); // Only set to false if not redirecting
+      setIsLoading(false); // Set to false only if not redirecting (i.e., user needs to login)
     };
 
     checkAuthStatus();
@@ -40,7 +43,7 @@ export default function LoginPage() {
             <Skeleton className="h-10 w-3/4 mx-auto mb-2" />
             <Skeleton className="h-6 w-1/2 mx-auto" />
           </div>
-          <Skeleton className="h-72 w-full" /> 
+          <Skeleton className="h-72 w-full" />
         </div>
       </div>
     );

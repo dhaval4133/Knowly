@@ -39,7 +39,7 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
     const fetchUserSession = async () => {
       setIsLoadingUser(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {
@@ -79,8 +79,8 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
           title: "Question Deleted",
           description: data.message || "The question has been successfully deleted.",
         });
-        router.push('/'); 
-        router.refresh(); 
+        router.push('/');
+        router.refresh();
       } else {
         toast({
           title: "Error Deleting Question",
@@ -101,7 +101,7 @@ export default function QuestionActions({ questionAuthorId, questionId }: Questi
   };
 
   if (isLoadingUser) {
-    return null; 
+    return null;
   }
 
   if (currentUser && currentUser.userId === questionAuthorId) {

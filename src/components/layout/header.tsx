@@ -14,7 +14,7 @@ interface CurrentUser {
   userId: string;
   userName: string;
   avatarUrl?: string;
-  bookmarkedQuestionIds?: string[]; // Added for potential use in header, though not directly used now
+  bookmarkedQuestionIds?: string[];
 }
 
 export default function Header() {
@@ -28,7 +28,7 @@ export default function Header() {
     const fetchUserSession = async () => {
       setIsLoadingUser(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.user) {

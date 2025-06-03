@@ -11,7 +11,7 @@ import AnswerCard from '@/components/question/answer-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Camera } from 'lucide-react'; // Changed Edit to Camera
+import { ArrowRight, Camera } from 'lucide-react';
 import { useEffect, useState, useRef, type ChangeEvent } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ProfileData, UserAnswerEntry } from '@/app/profile/[userId]/page';
@@ -63,7 +63,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     const fetchUserSession = async () => {
       setIsLoadingSession(true);
       try {
-        const response = await fetch('/api/auth/me');
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
         if (response.ok) {
           const sessionData = await response.json();
           if (sessionData.success && sessionData.user) {
@@ -98,7 +98,6 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Client-side validation
       if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
         toast({
           title: "Invalid File Type",
