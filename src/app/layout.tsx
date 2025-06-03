@@ -11,12 +11,14 @@ const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
   display: 'swap', // Explicitly set font-display to swap
+  preload: false, // Disable preloading
 });
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
   display: 'swap', // Explicitly set font-display to swap
+  preload: false, // Disable preloading
 });
 
 export const metadata: Metadata = {
