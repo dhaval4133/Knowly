@@ -7,18 +7,18 @@ import type { PopulatedQuestion } from '@/lib/types';
 import QuestionCard from '@/components/question/question-card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Search, AlertTriangle, ArrowUp, Loader2, ChevronDown } from 'lucide-react';
+import { Search, AlertTriangle, ArrowUp, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { fetchPaginatedQuestions, type FetchQuestionsResult } from '@/app/actions/questionActions';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
-const QUESTIONS_PER_PAGE = 10;
+const QUESTIONS_PER_PAGE = 10; // This can be adjusted
 const SEARCH_DEBOUNCE_DELAY = 500; // 500ms
 
 interface CurrentUserSession {
   userId: string;
-  bookmarkedQuestionIds: string[];
+  bookmarkedQuestionIds: string[]; // Ensure this is part of the session
 }
 
 export default function Home() {
@@ -130,21 +130,30 @@ export default function Home() {
       params.delete('search');
     }
     if (newSearchTerm !== currentSearch || (!newSearchTerm && currentSearch)) {
+      // Update URL without full page reload using Next.js router.replace
+      // The { scroll: false } option prevents scrolling to the top of the page.
       router.replace(`/?${params.toString()}`, { scroll: false });
-      setCurrentSearch(newSearchTerm);
+      setCurrentSearch(newSearchTerm); // Trigger re-fetch
     }
   }, [debouncedSearchTerm, router, currentSearch]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-    loadQuestions(1, currentSearch, true);
-  }, [currentSearch, loadQuestions]);
 
+  // Effect for loading questions when currentSearch changes (new search or clear search)
   useEffect(() => {
+    setCurrentPage(1); // Reset to page 1 for new searches
+    loadQuestions(1, currentSearch, true); // `true` indicates a new search
+  }, [currentSearch, loadQuestions]); // Depends on currentSearch and loadQuestions
+
+
+  // Effect for loading more questions for pagination (when currentPage changes)
+  useEffect(() => {
+    // Only load if it's not the initial load (page > 1)
+    // and not during the very first component mount sequence (isInitialLoading is false)
     if (currentPage > 1 && !isInitialLoading) {
-      loadQuestions(currentPage, currentSearch, false);
+      loadQuestions(currentPage, currentSearch, false); // `false` indicates not a new search
     }
   }, [currentPage, loadQuestions, currentSearch, isInitialLoading]);
+
 
   const handleScrollButtonVisibility = useCallback(() => {
     const shouldShowGoToTop = window.pageYOffset > 300;
@@ -169,14 +178,15 @@ export default function Home() {
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Trigger the debounced search update immediately
     const newSearchTerm = searchTermInput.trim();
     if (newSearchTerm !== currentSearch || (!newSearchTerm && currentSearch)) {
-      setDebouncedSearchTerm(newSearchTerm);
+        setDebouncedSearchTerm(newSearchTerm);
     }
   };
 
 
-  if (!dbConfigured && isInitialLoading) {
+  if (!dbConfigured && isInitialLoading) { // Show skeletons even if DB not configured but initial load
     return (
       <div className="space-y-8 relative">
         <Skeleton className="h-20 w-1/2 mx-auto" />
@@ -208,7 +218,7 @@ export default function Home() {
     );
   }
 
-  if (!dbConfigured && !isInitialLoading) {
+  if (!dbConfigured && !isInitialLoading) { // After initial load, show specific DB error
     return (
       <div className="text-center py-12 bg-destructive/10 p-6 rounded-lg max-w-2xl mx-auto">
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
@@ -276,7 +286,7 @@ export default function Home() {
         })}
       </div>
 
-      {(isInitialLoading || isLoadingSession) && dbConfigured && (
+      {(isInitialLoading || isLoadingSession) && dbConfigured && ( // Show skeletons during initial load or session loading if DB is configured
         <div className="space-y-6 mt-8">
           {[...Array(3)].map((_, i) => (
             <Card key={i} className="shadow-lg">
@@ -302,7 +312,7 @@ export default function Home() {
         </div>
       )}
 
-      {isLoading && !isInitialLoading && (
+      {isLoading && !isInitialLoading && ( // Show loader for subsequent page loads
         <div className="flex justify-center items-center py-8">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="ml-2 text-muted-foreground">Loading more questions...</p>
@@ -337,6 +347,7 @@ export default function Home() {
   );
 }
 
+// Temporary Card components for skeleton structure, assuming Card from ui/card is used elsewhere
 const Card = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("rounded-lg border bg-card text-card-foreground", className)}>{children}</div>;
 const CardHeader = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>;
 const CardContent = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("p-6 pt-0", className)}>{children}</div>;

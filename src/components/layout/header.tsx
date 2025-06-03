@@ -15,7 +15,7 @@ interface CurrentUser {
   userId: string;
   userName: string;
   avatarUrl?: string;
-  bookmarkedQuestionIds?: string[];
+  bookmarkedQuestionIds?: string[]; // Added for bookmarks
 }
 
 export default function Header() {
@@ -49,7 +49,7 @@ export default function Header() {
     };
 
     fetchUserSession();
-  }, [pathname]);
+  }, [pathname]); // Re-fetch on pathname change
 
   const handleLogout = async () => {
     try {
@@ -76,9 +76,12 @@ export default function Header() {
         variant: 'destructive',
       });
     } finally {
-      setCurrentUser(null);
-      router.push('/login');
-      router.refresh();
+      setCurrentUser(null); // Clear local user state immediately
+      router.push('/login'); // Redirect to login
+      // No need for router.refresh() typically if /api/auth/me is called on navigation
+      // or if subsequent pages also check auth status.
+      // However, if other parts of the layout depend on this state, a refresh might be wanted.
+      // For now, direct navigation to /login and local state clearing is primary.
     }
   };
 
@@ -105,13 +108,13 @@ export default function Header() {
 
           {isLoadingUser ? (
             <>
-              <Skeleton className="h-9 w-[70px] rounded-md sm:w-[80px]" />
-              <Skeleton className="h-9 w-[90px] rounded-md sm:w-[100px]" />
+              <Skeleton className="h-9 w-9 rounded-full sm:hidden" /> {/* Avatar placeholder for mobile */}
+              <Skeleton className="h-9 w-[70px] rounded-md sm:w-[80px]" /> {/* Profile/Login placeholder */}
+              <Skeleton className="h-9 w-[90px] rounded-md sm:w-[100px]" /> {/* Ask/Register placeholder */}
             </>
           ) : currentUser ? (
             // User is logged in
             <>
-              {/* Profile button (replaces Login) */}
               <Button variant="outline" size="sm" asChild className="px-2 sm:px-3">
                 <Link href={`/profile/${currentUser.userId}`} className="flex items-center space-x-1 sm:space-x-2">
                   <Avatar className="h-6 w-6">
@@ -122,7 +125,6 @@ export default function Header() {
                 </Link>
               </Button>
 
-              {/* Ask Question button */}
               <Button variant="default" size="sm" asChild className="px-2 sm:px-3">
                   <Link href="/ask" className="flex items-center space-x-1 sm:space-x-2">
                     <MessageSquarePlus size={16} />
@@ -130,7 +132,6 @@ export default function Header() {
                   </Link>
               </Button>
 
-              {/* Logout button (replaces Register) */}
               <Button variant="default" size="sm" onClick={handleLogout} className="px-2 sm:px-3">
                 <LogOut size={16} />
                 <span className="hidden sm:inline">Logout</span>
