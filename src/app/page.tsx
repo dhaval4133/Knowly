@@ -16,14 +16,19 @@ import { cn } from '@/lib/utils';
 const QUESTIONS_PER_PAGE = 10;
 const SEARCH_DEBOUNCE_DELAY = 500; // 500ms
 
+interface CurrentUserSession {
+  userId: string;
+  bookmarkedQuestionIds: string[];
+}
+
 export default function Home() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const initialSearchTerm = searchParams.get('search') || '';
-  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm); // For immediate input display
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(initialSearchTerm); // For triggering search
-  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm); // Actual term used for fetching
+  const [searchTermInput, setSearchTermInput] = useState(initialSearchTerm);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(initialSearchTerm);
+  const [currentSearch, setCurrentSearch] = useState(initialSearchTerm);
 
   const [questions, setQuestions] = useState<PopulatedQuestion[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -33,6 +38,9 @@ export default function Home() {
   const [dbConfigured, setDbConfigured] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showGoToTop, setShowGoToTop] = useState(false);
+
+  const [currentUserSession, setCurrentUserSession] = useState<CurrentUserSession | null>(null);
+  const [isLoadingSession, setIsLoadingSession] = useState(true);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const lastQuestionElementRef = useCallback((node: HTMLDivElement | null) => {
@@ -46,10 +54,39 @@ export default function Home() {
     if (node) observer.current.observe(node);
   }, [isLoading, currentPage, totalPages]);
 
+  useEffect(() => {
+    const fetchUserSession = async () => {
+      setIsLoadingSession(true);
+      try {
+        const response = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.user) {
+            setCurrentUserSession({
+              userId: data.user.userId,
+              bookmarkedQuestionIds: data.user.bookmarkedQuestionIds || [],
+            });
+          } else {
+            setCurrentUserSession(null);
+          }
+        } else {
+          setCurrentUserSession(null);
+        }
+      } catch (error) {
+        console.error("Error fetching user session for homepage:", error);
+        setCurrentUserSession(null);
+      } finally {
+        setIsLoadingSession(false);
+      }
+    };
+    fetchUserSession();
+  }, []);
+
+
   const loadQuestions = useCallback(async (page: number, search: string, isNewSearch: boolean = false) => {
     if (isNewSearch) {
       setIsInitialLoading(true);
-      setQuestions([]); // Clear questions for a new search
+      setQuestions([]);
     } else {
       setIsLoading(true);
     }
@@ -77,18 +114,13 @@ export default function Home() {
     }
   }, []);
 
-  // Debounce search term
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchTerm(searchTermInput);
     }, SEARCH_DEBOUNCE_DELAY);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [searchTermInput]);
 
-  // Effect to trigger search when debouncedSearchTerm changes
   useEffect(() => {
     const newSearchTerm = debouncedSearchTerm.trim();
     const params = new URLSearchParams(window.location.search);
@@ -97,100 +129,84 @@ export default function Home() {
     } else {
       params.delete('search');
     }
-    // Only push to router and update currentSearch if the debounced term actually changes the active search
-    if (newSearchTerm !== currentSearch) {
+    if (newSearchTerm !== currentSearch || (!newSearchTerm && currentSearch)) {
       router.replace(`/?${params.toString()}`, { scroll: false });
       setCurrentSearch(newSearchTerm);
-    } else if (!newSearchTerm && currentSearch) { // Handle clearing search
-      router.replace(`/?${params.toString()}`, { scroll: false });
-      setCurrentSearch('');
     }
   }, [debouncedSearchTerm, router, currentSearch]);
 
-
-  // Effect to load questions when currentSearch changes (actual search term)
   useEffect(() => {
-    setCurrentPage(1); // Reset to page 1 for new search
-    loadQuestions(1, currentSearch, true); // isNewSearch = true
+    setCurrentPage(1);
+    loadQuestions(1, currentSearch, true);
   }, [currentSearch, loadQuestions]);
 
-  // Effect to load more questions when currentPage changes (for infinite scroll)
   useEffect(() => {
-    // Only load if it's not the initial load for page 1 and not a new search that resets questions
     if (currentPage > 1 && !isInitialLoading) {
-      loadQuestions(currentPage, currentSearch, false); // isNewSearch = false
+      loadQuestions(currentPage, currentSearch, false);
     }
   }, [currentPage, loadQuestions, currentSearch, isInitialLoading]);
 
-
-  useEffect(() => {
-    const handleGoToTopVisibility = () => {
-      window.pageYOffset > 300 ? setShowGoToTop(true) : setShowGoToTop(false);
-    };
-    window.addEventListener('scroll', handleGoToTopVisibility);
-    handleGoToTopVisibility();
-    return () => {
-      window.removeEventListener('scroll', handleGoToTopVisibility);
-    };
+  const handleScrollButtonVisibility = useCallback(() => {
+    const shouldShowGoToTop = window.pageYOffset > 300;
+    setShowGoToTop(shouldShowGoToTop);
   }, []);
 
+  useEffect(() => {
+    window.addEventListener('scroll', handleScrollButtonVisibility);
+    handleScrollButtonVisibility(); // Initial check
+    return () => {
+      window.removeEventListener('scroll', handleScrollButtonVisibility);
+    };
+  }, [handleScrollButtonVisibility]);
+
   const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTermInput(e.target.value);
   };
 
-  // Manual search submission (e.g., pressing Enter or search button)
-  // This bypasses debounce for immediate action if desired, or can align with debounce
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const newSearchTerm = searchTermInput.trim();
-    // Update debounced term immediately to trigger search effect, or directly set currentSearch
-    if (newSearchTerm !== currentSearch) {
-      setDebouncedSearchTerm(newSearchTerm); // This will trigger the search via useEffect
-    } else if (!newSearchTerm && currentSearch) {
-      setDebouncedSearchTerm('');
+    if (newSearchTerm !== currentSearch || (!newSearchTerm && currentSearch)) {
+      setDebouncedSearchTerm(newSearchTerm);
     }
   };
 
 
   if (!dbConfigured && isInitialLoading) {
     return (
-        <div className="space-y-8 relative">
-            <Skeleton className="h-20 w-1/2 mx-auto" />
-            <Skeleton className="h-12 w-3/4 mx-auto" />
-            <div className="space-y-6 mt-8">
-            {[...Array(3)].map((_, i) => (
-                <Card key={i} className="shadow-lg">
-                <CardHeader>
-                    <Skeleton className="h-8 w-3/4 mb-2" />
-                    <Skeleton className="h-4 w-1/2" />
-                </CardHeader>
-                <CardContent>
-                    <Skeleton className="h-4 w-full mb-1" />
-                    <Skeleton className="h-4 w-full mb-1" />
-                    <Skeleton className="h-4 w-2/3" />
-                    <div className="mt-3 flex gap-2">
-                    <Skeleton className="h-6 w-20 rounded-full" />
-                    <Skeleton className="h-6 w-20 rounded-full" />
-                    </div>
-                </CardContent>
-                <CardFooter className="flex justify-between items-center">
-                    <Skeleton className="h-6 w-24" />
-                    <Skeleton className="h-9 w-32 rounded-md" />
-                </CardFooter>
-                </Card>
-            ))}
-            </div>
+      <div className="space-y-8 relative">
+        <Skeleton className="h-20 w-1/2 mx-auto" />
+        <Skeleton className="h-12 w-3/4 mx-auto" />
+        <div className="space-y-6 mt-8">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="shadow-lg">
+              <CardHeader>
+                <Skeleton className="h-8 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-4 w-full mb-1" />
+                <Skeleton className="h-4 w-2/3" />
+                <div className="mt-3 flex gap-2">
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+              </CardContent>
+              <CardFooter className="flex justify-between items-center">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-9 w-32 rounded-md" />
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
-
 
   if (!dbConfigured && !isInitialLoading) {
     return (
@@ -198,8 +214,7 @@ export default function Home() {
         <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
         <h2 className="text-2xl font-semibold text-destructive">Database Not Configured</h2>
         <p className="text-muted-foreground mt-2">
-          The application requires MongoDB connection details (MONGODB_URI and MONGODB_DB_NAME) to be set in environment variables.
-          Please configure them to see and post questions.
+          The application requires MongoDB connection details. Please configure them.
         </p>
       </div>
     );
@@ -246,14 +261,22 @@ export default function Home() {
 
       <div className="space-y-6">
         {questions.map((question, index) => {
-          if (questions.length === index + 1 && currentPage < totalPages && !isLoading) { // Check all conditions for ref
-            return <div ref={lastQuestionElementRef} key={question.id}><QuestionCard question={question} /></div>;
+          const cardContent = (
+            <QuestionCard
+              key={question.id}
+              question={question}
+              loggedInUserId={currentUserSession?.userId}
+              currentUserBookmarkedQuestionIds={currentUserSession?.bookmarkedQuestionIds}
+            />
+          );
+          if (questions.length === index + 1 && currentPage < totalPages && !isLoading) {
+            return <div ref={lastQuestionElementRef} key={question.id}>{cardContent}</div>;
           }
-          return <QuestionCard key={question.id} question={question} />;
+          return cardContent;
         })}
       </div>
 
-      {isInitialLoading && dbConfigured && (
+      {(isInitialLoading || isLoadingSession) && dbConfigured && (
         <div className="space-y-6 mt-8">
           {[...Array(3)].map((_, i) => (
             <Card key={i} className="shadow-lg">
@@ -314,7 +337,6 @@ export default function Home() {
   );
 }
 
-// Dummy Card components for Skeleton structure
 const Card = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("rounded-lg border bg-card text-card-foreground", className)}>{children}</div>;
 const CardHeader = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("flex flex-col space-y-1.5 p-6", className)}>{children}</div>;
 const CardContent = ({ className, children }: { className?: string, children: React.ReactNode }) => <div className={cn("p-6 pt-0", className)}>{children}</div>;

@@ -8,20 +8,31 @@ import VoteButtons from '@/components/shared/vote-buttons';
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Eye, ArrowRight, Reply } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import QuestionActions from '@/components/question/question-actions'; // Import QuestionActions
+import QuestionActions from '@/components/question/question-actions';
+import BookmarkButton from '@/components/shared/bookmark-button'; // Import BookmarkButton
 
 interface QuestionCardProps {
   question: Question;
-  showAuthorActions?: boolean; // New prop
+  showAuthorActions?: boolean;
+  loggedInUserId?: string;
+  currentUserBookmarkedQuestionIds?: string[];
 }
 
-export default function QuestionCard({ question, showAuthorActions = false }: QuestionCardProps) {
+export default function QuestionCard({
+  question,
+  showAuthorActions = false,
+  loggedInUserId,
+  currentUserBookmarkedQuestionIds,
+}: QuestionCardProps) {
   const initials = question.author.name.split(' ').map(n => n[0]).join('').toUpperCase();
   const timeAgo = formatDistanceToNow(new Date(question.updatedAt), { addSuffix: true });
   const activityText = new Date(question.createdAt).getTime() === new Date(question.updatedAt).getTime()
     ? `asked ${formatDistanceToNow(new Date(question.createdAt), { addSuffix: true })}`
     : `modified ${timeAgo}`;
 
+  const isBookmarked = loggedInUserId && currentUserBookmarkedQuestionIds
+    ? currentUserBookmarkedQuestionIds.includes(question.id)
+    : false;
 
   return (
     <Card className="shadow-lg hover:shadow-xl transition-shadow duration-300">
@@ -30,8 +41,14 @@ export default function QuestionCard({ question, showAuthorActions = false }: Qu
           <Link href={`/questions/${question.id}`} className="hover:text-primary transition-colors flex-1 min-w-0">
             <CardTitle className="text-xl md:text-2xl font-semibold mb-1 truncate" title={question.title}>{question.title}</CardTitle>
           </Link>
-          <div className="flex items-center space-x-2 flex-shrink-0">
-            {showAuthorActions && (
+          <div className="flex items-center space-x-1 flex-shrink-0">
+            {loggedInUserId && (
+              <BookmarkButton
+                questionId={question.id}
+                isInitiallyBookmarked={isBookmarked}
+              />
+            )}
+            {showAuthorActions && loggedInUserId === question.author.id && (
               <QuestionActions questionAuthorId={question.author.id} questionId={question.id} />
             )}
             <VoteButtons initialUpvotes={question.upvotes} initialDownvotes={question.downvotes} itemId={question.id} itemType="question" />
@@ -39,7 +56,7 @@ export default function QuestionCard({ question, showAuthorActions = false }: Qu
         </div>
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <Avatar className="h-6 w-6">
-            <AvatarImage src={question.author.avatarUrl} alt={question.author.name} data-ai-hint="user avatar" />
+            <AvatarImage src={question.author.avatarUrl} alt={question.author.name} data-ai-hint="user avatar"/>
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
           <span>{question.author.name}</span>
