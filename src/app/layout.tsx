@@ -10,11 +10,13 @@ import { ThemeProvider } from '@/components/theme-provider';
 const geistSans = Geist({
   variable: '--font-geist-sans',
   subsets: ['latin'],
+  display: 'swap', // Explicitly set font-display to swap
 });
 
 const geistMono = Geist_Mono({
   variable: '--font-geist-mono',
   subsets: ['latin'],
+  display: 'swap', // Explicitly set font-display to swap
 });
 
 export const metadata: Metadata = {
