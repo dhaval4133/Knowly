@@ -97,7 +97,6 @@ async function getUserById(userId: string, db: Db): Promise<UserDBDocument | nul
   try {
     return await db.collection<UserDBDocument>('users').findOne(
         { _id: new ObjectId(userId) },
-        // Use an inclusive projection: list only fields to include. 'password' will be excluded by default.
         { projection: { name: 1, email: 1, createdAt: 1, avatarUrl: 1, bookmarkedQuestionIds: 1 } }
     );
   } catch (error) {
@@ -130,7 +129,7 @@ async function getQuestionsByAuthorId(authorIdString: string, db: Db, usersColle
                 const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
                 return {
                     id: ansId,
-                    author: defaultAuthor,
+                    author: defaultAuthor, // Content not needed for list view
                     createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
                     upvotes: ans.upvotes,
                     downvotes: ans.downvotes,
@@ -180,7 +179,9 @@ async function getAnswersByAuthorId(profileUserIdString: string, db: Db, usersCo
 
         for (const qDoc of questionDocs) {
             for (const ans of (qDoc.answers || [])) {
-                if (ans.authorId.toString() === profileUserIdString) {
+                // Ensure ans.authorId is a string before comparison
+                const ansAuthorIdString = typeof ans.authorId === 'string' ? ans.authorId : ans.authorId.toString();
+                if (ansAuthorIdString === profileUserIdString) {
                     userAnswerEntries.push({
                         answer: {
                             id: typeof ans._id === 'string' ? ans._id : ans._id.toString(), content: ans.content, author: profileUserType,
@@ -208,8 +209,8 @@ async function getBookmarkedQuestions(bookmarkedIds: ObjectId[] | undefined, db:
         const usersCollection = db.collection<UserDBDocument>('users');
 
         const questionDocs = await questionsCollection.find({ _id: { $in: bookmarkedIds } })
-            .project({ 'answers.content': 0 })
-            .sort({ updatedAt: -1 })
+            .project({ 'answers.content': 0 }) // Exclude answer content for list view
+            .sort({ updatedAt: -1 }) // Or perhaps sort by when they were bookmarked if that timestamp was stored
             .toArray();
 
         const authorIds = new Set<ObjectId>();
@@ -228,16 +229,20 @@ async function getBookmarkedQuestions(bookmarkedIds: ObjectId[] | undefined, db:
             const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
             const populatedAnswers = (qDoc.answers || []).map(ans => ({
                 id: typeof ans._id === 'string' ? ans._id : ans._id.toString(),
-                author: defaultAuthor,
-                createdAt: ans.createdAt ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
+                author: defaultAuthor, // Content not needed for list view
+                createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) ? new Date(ans.createdAt).toISOString() : new Date(0).toISOString(),
                 upvotes: ans.upvotes,
                 downvotes: ans.downvotes,
             }));
+
+            const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString();
+            const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) ? new Date(qDoc.updatedAt).toISOString() : validCreatedAt;
+
             return {
                 id: qDoc._id.toString(), title: qDoc.title, description: qDoc.description,
                 tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), author: questionAuthor,
-                createdAt: qDoc.createdAt ? new Date(qDoc.createdAt).toISOString() : new Date(0).toISOString(),
-                updatedAt: qDoc.updatedAt ? new Date(qDoc.updatedAt).toISOString() : new Date(0).toISOString(),
+                createdAt: validCreatedAt,
+                updatedAt: validUpdatedAt,
                 upvotes: qDoc.upvotes, downvotes: qDoc.downvotes, views: qDoc.views, answers: populatedAnswers,
             };
         });
@@ -255,10 +260,11 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
 
     try {
         const db = await connectToDatabase();
-        const usersCollection = db.collection<UserDBDocument>('users');
+        const usersCollection = db.collection<UserDBDocument>('users'); // Define once
         const userDoc = await getUserById(userId, db);
 
         if (!userDoc) {
+            // User not found, so no data to fetch for questions, answers, or bookmarks
             return { fetchedUser: null, userQuestions: [], userAnswers: [], userBookmarkedQuestions: [], dbConfigured: true, profileUserId: userId };
         }
 
@@ -271,8 +277,10 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
             bookmarkedQuestionIds: (userDoc.bookmarkedQuestionIds || []).map(id => id.toString()),
         };
 
+        // Fetch questions, answers, and bookmarked questions
         const questions = await getQuestionsByAuthorId(userDoc._id.toString(), db, usersCollection);
         const answers = await getAnswersByAuthorId(userDoc._id.toString(), db, usersCollection);
+        // Pass userDoc.bookmarkedQuestionIds which are ObjectIds
         const bookmarkedQuestions = await getBookmarkedQuestions(userDoc.bookmarkedQuestionIds, db);
 
         return {
@@ -286,6 +294,7 @@ async function fetchProfilePageData(userId: string): Promise<ProfileData> {
 
     } catch (dbError) {
         console.error("ProfilePage: Database error during data fetching", dbError);
+        // Indicate a general error, but still with dbConfigured: true if the initial check passed
         return { fetchedUser: null, userQuestions: [], userAnswers: [], userBookmarkedQuestions: [], dbConfigured: true, profileUserId: userId };
     }
 }
@@ -312,3 +321,4 @@ export default async function ProfilePage({ params }: ProfilePageProps) {
 
   return <ProfileClientLayout profileData={profileData} />;
 }
+

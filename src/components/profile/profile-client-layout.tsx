@@ -196,13 +196,13 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     ? new Date(fetchedUser.createdAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
     : 'N/A';
 
-  const TABS = [
-    { value: "questions", label: `My Questions (${userQuestions.length})`, content: userQuestions, type: 'question' },
-    { value: "answers", label: `My Answers (${userAnswers.length})`, content: userAnswers, type: 'answer' },
+  const TABS_CONFIG = [
+    { value: "questions", label: `My Questions (${userQuestions.length})`, content: userQuestions, type: 'question', visible: true },
+    { value: "answers", label: `My Answers (${userAnswers.length})`, content: userAnswers, type: 'answer', visible: true },
+    { value: "bookmarks", label: `My Bookmarks (${userBookmarkedQuestions.length})`, content: userBookmarkedQuestions, type: 'bookmark', visible: isOwnProfile },
   ];
-  if (isOwnProfile) {
-    TABS.push({ value: "bookmarks", label: `My Bookmarks (${userBookmarkedQuestions.length})`, content: userBookmarkedQuestions, type: 'bookmark' });
-  }
+
+  const visibleTabs = TABS_CONFIG.filter(tab => tab.visible);
 
 
   return (
@@ -278,7 +278,7 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
 
       <Tabs defaultValue="questions" className="w-full">
         <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-3' : 'grid-cols-2'} md:w-2/3 lg:w-1/2 mx-auto`}>
-          {TABS.map(tab => (
+          {visibleTabs.map(tab => (
             <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
           ))}
         </TabsList>
@@ -290,6 +290,8 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
                 key={question.id}
                 question={question}
                 showAuthorActions={isOwnProfile}
+                loggedInUserId={currentUser?.userId}
+                currentUserBookmarkedQuestionIds={currentUser?.bookmarkedQuestionIds}
               />
             ))
           ) : (
@@ -353,3 +355,4 @@ export default function ProfileClientLayout({ profileData }: ProfileClientLayout
     </div>
   );
 }
+
