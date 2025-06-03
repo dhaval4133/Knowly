@@ -16,7 +16,7 @@ export default function AnswerCard({ answer, questionId }: AnswerCardProps) {
   const timeAgo = formatDistanceToNow(new Date(answer.createdAt), { addSuffix: true });
 
   return (
-    <Card className="bg-background/50 shadow-md">
+    <Card className="bg-background/50 shadow-md" id={`answer-${answer.id}`}>
       <CardHeader className="pb-3">
         <div className="flex items-center space-x-3">
           <Avatar className="h-10 w-10">
@@ -34,7 +34,7 @@ export default function AnswerCard({ answer, questionId }: AnswerCardProps) {
       <CardContent>
         {/* In a real app, render Markdown here */}
         <div className="prose dark:prose-invert max-w-none text-foreground/90 whitespace-pre-wrap text-base">
-          {answer.content}
+          {answer.content || ''}
         </div>
       </CardContent>
       <CardFooter className="flex justify-between items-center pt-3">

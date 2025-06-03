@@ -8,11 +8,11 @@ import type { AnswerData, QuestionData, PopulatedQuestion, User as UserType } fr
 interface QuestionDBDocument extends QuestionData { // Inherits fields from QuestionData
   _id: ObjectId;
   authorId: ObjectId;
-  answers: AnswerDBDocument[]; 
+  answers: AnswerDBDocument[];
 }
 
 interface AnswerDBDocument extends AnswerData { // Inherits fields from AnswerData
-    _id: ObjectId | string; 
+    _id: ObjectId | string;
     authorId: ObjectId | string;
 }
 
@@ -24,7 +24,7 @@ interface UserDBDocument extends WithId<Document> {
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME;
-const QUESTIONS_PER_PAGE = 10; 
+const QUESTIONS_PER_PAGE = 10;
 
 let cachedClient: MongoClient | null = null;
 let cachedDb: Db | null = null;
@@ -43,7 +43,7 @@ async function connectToDatabase() {
   if (!MONGODB_URI || !MONGODB_DB_NAME) {
     // This case should be handled by the caller, but as a safeguard:
     console.error('MongoDB URI or DB Name not configured for questionActions.');
-    return null; 
+    return null;
   }
   if (!cachedClient) {
     cachedClient = new MongoClient(MONGODB_URI);
@@ -93,17 +93,19 @@ export async function fetchPaginatedQuestions(page: number, searchTerm?: string)
     const totalPages = Math.ceil(totalQuestions / QUESTIONS_PER_PAGE);
     const skipAmount = (page - 1) * QUESTIONS_PER_PAGE;
 
-    const questionDocs = await questionsCollection.find(query)
+    const questionDocs = await questionsCollection.find(query, {
+      projection: { 'answers.content': 0 } // Exclude content of answers for list view
+    })
       .sort({ updatedAt: -1 })
       .skip(skipAmount)
       .limit(QUESTIONS_PER_PAGE)
       .toArray();
-    
+
     const questionAuthorIds = new Set<ObjectId>();
     questionDocs.forEach(qDoc => {
       questionAuthorIds.add(qDoc.authorId);
     });
-    
+
     const uniqueQuestionAuthorIdsArray = Array.from(questionAuthorIds);
 
     const authorsArray = await usersCollection.find({ _id: { $in: uniqueQuestionAuthorIdsArray } }).toArray();
@@ -115,38 +117,38 @@ export async function fetchPaginatedQuestions(page: number, searchTerm?: string)
         avatarUrl: authorDoc.avatarUrl || `https://placehold.co/100x100.png?text=${authorDoc.name[0]?.toUpperCase() || 'U'}`,
       });
     });
-    
+
     const defaultAuthor: UserType = { id: 'unknown', name: 'Unknown User', avatarUrl: 'https://placehold.co/100x100.png?text=U' };
 
     const populatedQuestions: PopulatedQuestion[] = questionDocs.map(qDoc => {
       const questionAuthor = authorsMap.get(qDoc.authorId.toString()) || defaultAuthor;
-      
+
       const populatedAnswers = (qDoc.answers || []).map(ans => {
         const ansId = typeof ans._id === 'string' ? ans._id : ans._id.toString();
         return {
           id: ansId,
-          content: ans.content,
-          author: defaultAuthor, 
-          createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime())) 
-                       ? new Date(ans.createdAt).toISOString() 
+          content: ans.content, // Will be undefined due to projection, which is fine for PopulatedQuestion.answers
+          author: defaultAuthor,
+          createdAt: ans.createdAt && (ans.createdAt instanceof Date || !isNaN(new Date(ans.createdAt).getTime()))
+                       ? new Date(ans.createdAt).toISOString()
                        : new Date(0).toISOString(),
           upvotes: ans.upvotes,
           downvotes: ans.downvotes,
         };
       });
 
-      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime())) 
-                             ? new Date(qDoc.createdAt).toISOString() 
+      const validCreatedAt = qDoc.createdAt && (qDoc.createdAt instanceof Date || !isNaN(new Date(qDoc.createdAt).getTime()))
+                             ? new Date(qDoc.createdAt).toISOString()
                              : new Date(0).toISOString();
-      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime())) 
-                             ? new Date(qDoc.updatedAt).toISOString() 
+      const validUpdatedAt = qDoc.updatedAt && (qDoc.updatedAt instanceof Date || !isNaN(new Date(qDoc.updatedAt).getTime()))
+                             ? new Date(qDoc.updatedAt).toISOString()
                              : validCreatedAt;
 
       return {
         id: qDoc._id.toString(),
         title: qDoc.title,
         description: qDoc.description,
-        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })), 
+        tags: qDoc.tags.map(tag => ({ id: tag, name: tag })),
         author: questionAuthor,
         createdAt: validCreatedAt,
         updatedAt: validUpdatedAt,
@@ -160,6 +162,6 @@ export async function fetchPaginatedQuestions(page: number, searchTerm?: string)
     return { questions: populatedQuestions, totalPages, dbConfigured: true };
   } catch (error) {
     console.error('Error in fetchPaginatedQuestions:', error);
-    return { questions: [], totalPages: 0, dbConfigured: true, error: error instanceof Error ? error.message : "An unknown error occurred" }; 
+    return { questions: [], totalPages: 0, dbConfigured: true, error: error instanceof Error ? error.message : "An unknown error occurred" };
   }
 }
