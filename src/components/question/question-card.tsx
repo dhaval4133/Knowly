@@ -3,13 +3,11 @@ import Link from 'next/link';
 import type { Question } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import TagBadge from '@/components/shared/tag-badge';
-import VoteButtons from '@/components/shared/vote-buttons';
+import { BookmarkButton, TagBadge, VoteButtons } from '@/components/shared'; // Consolidated import from shared/index.ts
 import { Button } from '@/components/ui/button';
 import { MessageCircle, Eye, ArrowRight, Reply } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import QuestionActions from '@/components/question/question-actions';
-import BookmarkButton from '@/components/shared/bookmark-button'; // Import BookmarkButton
 
 interface QuestionCardProps {
   question: Question;
