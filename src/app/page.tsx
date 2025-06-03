@@ -337,7 +337,7 @@ export default function Home() {
           onClick={scrollToTop}
           variant="default"
           size="icon"
-          className="fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg z-50"
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 h-12 w-12 rounded-full shadow-lg z-50"
           aria-label="Go to top"
         >
           <ArrowUp className="h-6 w-6" />
